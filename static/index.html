@@ -264,8 +264,11 @@ function condHtml(c){
     const on=c.value===c.tiers[i]?'on':'';
     return `<button class="tier ${on}" data-id="${c.condition_id}" data-i="${i}">${lab} ${fmt(c,c.tiers[i])}</button>`;
   }).join(''):`<span class="muted">布尔红线条件</span>`;
+  const headExpr = (c.polarity==='exclude' && c.metric && c.metric.startsWith('is_'))
+    ? `<span class="muted">红线要求：该标志必须为 <b>「否」</b>（即不属于${c.metric_label.replace(/（.*?）/g,'')}）</span>`
+    : `<span class="muted">${c.op} <b>${tval(c)}</b></span>`;
   return `<div class="cond ${c.polarity==='exclude'?'exclude':''} ${c.needs_confirm?'pending':''}" data-id="${c.condition_id}">
-    <div class="top"><span class="ml">${c.metric_label} <span class="muted">${c.op} <b>${tval(c)}</b></span></span>
+    <div class="top"><span class="ml">${c.metric_label} ${headExpr}</span>
     <span><span class="src">${c.source==='expert_default'?'专家值':'已调整'}</span> <button data-del="${c.condition_id}">删除</button></span></div>
     <div class="caliber">口径：${c.caliber}　|　来自你的话：「${c.quote}」</div>
     ${c.rationale?`<div class="rationale">💡 专家值为什么这么定：${c.rationale}（产品预设口径，可自行调整，不构成投资建议）</div>`:''}

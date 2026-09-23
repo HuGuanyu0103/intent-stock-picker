@@ -55,6 +55,13 @@ res = E.run(matrix, conds)
 check("A 全满足入选", any(x["thscode"] == "A" for x in res["groups"]["selected"]))
 check("B 仅卡 PE 进差一点", any(x["thscode"] == "B" and "PE" in x["gap"] for x in res["groups"]["near_miss"]))
 check("C 触发 ST 排除组", any(x["thscode"] == "C" for x in res["groups"]["excluded"]))
+# 排除条件投影翻转：用户视角"必须不是 ST"
+a_checks = next(x for x in res["groups"]["selected"] if x["thscode"] == "A")["checks"]
+st_show = next(x for x in a_checks if x["metric_label"].startswith("ST"))
+check("入选非ST股的ST行显示为✔满足（非双重否定）", st_show["result"] == "pass" and st_show["op"] == "≠")
+c_rec = next(x for x in res["groups"]["excluded"] if x["thscode"] == "C")
+st_fail = next(x for x in c_rec["checks"] if x["metric_label"].startswith("ST"))
+check("被排除ST股的ST行显示为✘且原因点出红线冲突", st_fail["result"] == "fail" and "红线" in c_rec["reasons"][0])
 check("D 财务缺失进数据不足", any(x["thscode"] == "D" for x in res["groups"]["unknown_data"]))
 check("入选按贴合度降序", all(res["groups"]["selected"][i]["fit"] >= res["groups"]["selected"][i+1]["fit"]
                          for i in range(len(res["groups"]["selected"])-1)))
