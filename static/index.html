@@ -227,14 +227,14 @@ $('#refineBtn').onclick=async()=>{
 async function runScreen(isRefine){
   const r=await (await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conditions})})).json();
   window.__result=r;
-  if(isRefine){
-    const newSet=new Set(r.groups.selected.map(x=>x.thscode));
-    const added=[...newSet].filter(x=>!lastSelected.has(x)).length;
+  const newSet=new Set(r.groups.selected.map(x=>x.thscode));
+  if(lastSelected.size>0){
+    const addedCodes=new Set([...newSet].filter(x=>!lastSelected.has(x)));
     const removed=[...lastSelected].filter(x=>!newSet.has(x)).length;
-    $('#diffInfo').innerHTML=`<div class="${added||removed?'warn':''}" style="background:#f0fdf4;border-color:#bbf7d0;color:#166534">条件已更新：新增 <b>${added}</b> 只、掉出 <b>${removed}</b> 只，当前入选 <b>${r.counts.selected}</b> 只（新增绿色标记）。</div>`;
-    r.__added=newSet;
+    $('#diffInfo').innerHTML=`<div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:8px 12px;font-size:13px;margin-top:8px">条件已更新：新增 <b>${addedCodes.size}</b> 只、掉出 <b>${removed}</b> 只，当前入选 <b>${r.counts.selected}</b> 只（新增带绿色标记）。</div>`;
+    r.__added=addedCodes;
   }else{$('#diffInfo').innerHTML='';r.__added=new Set();}
-  lastSelected=new Set(r.groups.selected.map(x=>x.thscode));
+  lastSelected=newSet;
   $('#resCard').style.display='block';
   renderTabs(r);renderPane(r);
 }
