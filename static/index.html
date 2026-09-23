@@ -127,10 +127,10 @@ fetch('/api/health').then(r=>r.json()).then(h=>{health=h;
 });
 
 document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{$('#q').value=ch.dataset.q;doParse();});
-$('#go').onclick=doParse;
+$('#go').onclick=()=>doParse();
 
 async function doParse(appendText){
-  const text=appendText||$('#q').value;
+  const text=(typeof appendText==='string')?appendText:$('#q').value;
   $('#narr').innerHTML=''; $('#condCard').style.display='none';
   const resp=await fetch('/api/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
   const reader=resp.body.getReader();const dec=new TextDecoder();let buf='';
@@ -182,9 +182,9 @@ function condHtml(c){
     <div class="top"><span class="ml">${c.metric_label} <span class="muted">${c.op} <b>${tval(c)}</b></span></span>
     <span><span class="src">${c.source==='expert_default'?'专家值':'已调整'}</span> <button data-del="${c.condition_id}">删除</button></span></div>
     <div class="caliber">口径：${c.caliber}　|　来自你的话：「${c.quote}」</div>
-    <div class="row" style="margin:6px 0 0"><div class="tiers">${tiers}</div>
-    <input class="manual" type="${c.unit_tier==='money'?'number':'number'}" step="any" value="${c.unit_tier==='money'?(c.value/1e8):c.value}" data-manual="${c.condition_id}">
-    <span class="muted">${c.unit_tier==='money'?'亿元':c.unit||''}</span></div>
+    ${c.tiers ? `<div class="row" style="margin:6px 0 0"><div class="tiers">${tiers}</div>
+    <input class="manual" type="number" step="any" value="${c.unit_tier==='money'?(c.value/1e8):c.value}" data-manual="${c.condition_id}">
+    <span class="muted">${c.unit_tier==='money'?'亿元':c.unit||''}</span></div>` : ''}
   </div>`;
 }
 function bindCondEvents(){

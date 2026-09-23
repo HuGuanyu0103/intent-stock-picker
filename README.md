@@ -17,6 +17,12 @@
 
 前端展示的每一个数字都来自引擎判定结果对象，AI 文案不携带任何自造数字。
 
+## 在线体验
+
+**公网预览地址**：https://flux-ai-preview-91229445012098262-4mb7k6kikh5h4wwb.flux.bytedance.net/
+
+（Worker 存活期间可直接打开；数据为 2026-09-23 盘后预热缓存。长期托管可部署到任意支持 Python 的平台：`python3 app.py`，Key 配为环境变量即可。）
+
 ## 启动方式
 
 ```bash
