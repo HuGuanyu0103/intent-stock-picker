@@ -53,6 +53,23 @@ def trials():
                     "conflicts": engine._hard_conflicts(conditions)})
 
 
+@app.post("/api/events")
+def events():
+    """轻量行为埋点：追加写本地 JSONL，无第三方、无用户身份。"""
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("event", ""))[:64]
+    if not name:
+        return jsonify({"ok": False}), 400
+    rec = {"ts": int(time.time() * 1000), "event": name,
+           "props": payload.get("props", {})}
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "data", "events.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # 埋点失败绝不影响主链路
+    return jsonify({"ok": True})
+
+
 @app.post("/api/run")
 def run():
     conditions = (request.json or {}).get("conditions", [])

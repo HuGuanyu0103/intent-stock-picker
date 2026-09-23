@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 data/raw/
+data/matrix.json
+data/events.jsonl
+data/demo_video/
 data/preheat.log
 data/server.log
 .env

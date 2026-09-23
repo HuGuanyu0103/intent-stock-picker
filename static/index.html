@@ -57,6 +57,29 @@ th{background:#f9fafb;font-weight:600}
 .disc{margin-top:18px;font-size:11.5px;color:var(--mut);border-top:1px solid var(--line);padding-top:10px}
 .badge-new{background:var(--green);color:#fff;font-size:10px;padding:0 6px;border-radius:8px;margin-left:6px}
 .badge-out{background:var(--red);color:#fff;font-size:10px;padding:0 6px;border-radius:8px;margin-left:6px}
+.rationale{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:5px 8px;margin-top:6px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1f2937;color:#fff;padding:10px 18px;border-radius:8px;font-size:13.5px;z-index:99;opacity:0;transition:opacity .25s;max-width:90vw;text-align:center}
+.toast.show{opacity:.95}
+.toast.err{background:#991b1b}
+.saved-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.saved-item{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 8px;display:flex;gap:6px;align-items:center;background:#f9fafb}
+.saved-item b{color:var(--blue)}
+.saved-item span{cursor:pointer;color:var(--mut)}
+.saved-item .del{color:var(--red)}
+.stock .body{overflow-x:auto}
+.stock .body table{min-width:480px}
+@media (max-width:640px){
+  .wrap{padding:10px 10px 50px}
+  .card{padding:11px 12px}
+  .cond .top{flex-direction:column;align-items:flex-start;gap:4px}
+  .tabs{overflow-x:auto;flex-wrap:nowrap}
+  .tab{white-space:nowrap;padding:8px 10px;font-size:12.5px}
+  .row{gap:6px}
+  button{padding:7px 10px}
+  #refine{width:260px;max-width:100%}
+  .statusbar{gap:8px;font-size:11.5px}
+  textarea{font-size:16px}  /* 防止 iOS 聚焦自动放大 */
+}
 </style>
 </head>
 <body>
@@ -85,10 +108,13 @@ th{background:#f9fafb;font-weight:600}
   <div class="row" style="justify-content:space-between">
     <div id="estimate" class="muted"></div>
     <div class="row" style="margin:0">
+      <button id="saveScheme">保存这组条件</button>
       <button class="primary" id="run">运行筛选</button>
     </div>
   </div>
+  <div class="saved-row" id="savedRow"></div>
 </div>
+<div class="toast" id="toast"></div>
 
 <div class="card" id="resCard" style="display:none">
   <div class="row" style="justify-content:space-between;align-items:center">
@@ -112,6 +138,20 @@ th{background:#f9fafb;font-weight:600}
 <script>
 let conditions=[], lastSelected=new Set(), curTab='selected', health=null;
 const $=s=>document.querySelector(s);
+const sid=()=>{try{return sessionStorage.__sid||(sessionStorage.__sid=Math.random().toString(36).slice(2,10))}catch(e){return 'x'}};
+function track(event, props={}){
+  try{
+    const body=JSON.stringify({event, props:{...props, sid:sid()}});
+    navigator.sendBeacon ? navigator.sendBeacon('/api/events', new Blob([body],{type:'application/json'}))
+      : fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body,keepalive:true});
+  }catch(e){/* 埋点绝不影响主链路 */}
+}
+track('session_start',{ts:Date.now()});
+let toastTimer=null;
+function toast(msg, isErr){
+  const t=$('#toast'); t.textContent=msg; t.className='toast show'+(isErr?' err':'');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.className='toast',3500);
+}
 const fmt=(c,v)=>{
   if(v===null||v===undefined) return '--';
   if(['pe_pct','vol_pct'].includes(c.metric)) return (v*100).toFixed(0)+'%';
@@ -122,6 +162,39 @@ const fmt=(c,v)=>{
 };
 const tval=c=>fmt(c,c.value);
 
+// ── 方案保存（localStorage，无账号体系）────────────────────────────────
+const LS_KEY='isp_schemes_v1';
+const loadSchemes=()=>{try{return JSON.parse(localStorage.getItem(LS_KEY)||'[]')}catch(e){return []}};
+const saveSchemes=a=>{try{localStorage.setItem(LS_KEY,JSON.stringify(a))}catch(e){}};
+function renderSaved(){
+  const arr=loadSchemes();
+  $('#savedRow').innerHTML=arr.length?'<span class="muted" style="font-size:12px">已保存方案：</span>'+arr.map((s,i)=>
+    `<span class="saved-item"><b>${s.name}</b>（${s.n}条/${s.hit}只）<span data-load="${i}" title="加载">↻ 加载</span><span class="del" data-del="${i}" title="删除">✕</span></span>`).join(''):'';
+  document.querySelectorAll('[data-load]').forEach(el=>el.onclick=()=>{
+    const s=loadSchemes()[+el.dataset.load];
+    conditions=JSON.parse(JSON.stringify(s.conditions));lastSelected=new Set();
+    $('#q').value=s.name; renderConds();
+    toast('已加载方案「'+s.name+'」，可直接运行或继续修改');
+    $('#condCard').scrollIntoView({behavior:'smooth'});
+  });
+  document.querySelectorAll('.saved-row [data-del]').forEach(el=>el.onclick=()=>{
+    const a=loadSchemes();a.splice(+el.dataset.del,1);saveSchemes(a);renderSaved();
+  });
+}
+$('#saveScheme').onclick=()=>{
+  if(!conditions.length){toast('还没有可保存的条件',true);return;}
+  const name=prompt('给这组条件起个名字：', $('#q').value.slice(0,20)||'我的选股方案');
+  if(!name)return;
+  const cur=window.__result?window.__result.counts.selected:null;
+  const arr=loadSchemes();
+  arr.unshift({name, ts:Date.now(), n:conditions.length, hit:cur,
+    conditions:JSON.parse(JSON.stringify(conditions))});
+  saveSchemes(arr.slice(0,20)); renderSaved();
+  track('scheme_save',{n:conditions.length,hit:cur});
+  toast('已保存方案「'+name+'」（存在本浏览器）');
+};
+renderSaved();
+
 fetch('/api/health').then(r=>r.json()).then(h=>{health=h;
   $('#status').innerHTML=`<span>样本池：<b>${h.n}</b> 只（沪深300）</span><span>数据时点：<b>${h.as_of}</b></span><span>模式：<b>${h.mode==='live'?'真实数据（预热缓存）':'样例数据'}</b></span><span>${h.engine}</span>`;
 });
@@ -131,28 +204,41 @@ $('#go').onclick=()=>doParse();
 
 async function doParse(appendText){
   const text=(typeof appendText==='string')?appendText:$('#q').value;
-  $('#narr').innerHTML=''; $('#condCard').style.display='none';
-  const resp=await fetch('/api/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+  track('intent_submit',{len:text.length, append:!!appendText});
+  $('#narr').innerHTML='';
+  if(!appendText)$('#condCard').style.display='none';
+  let resp;
+  try{
+    resp=await fetch('/api/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+  }catch(e){ toast('解读服务暂时不可用，请检查网络后重试', true); return; }
   const reader=resp.body.getReader();const dec=new TextDecoder();let buf='';
   let parsed=null;
-  while(true){
-    const {done,value}=await reader.read();if(done)break;
-    buf+=dec.decode(value,{stream:true});
-    const parts=buf.split('\n\n');buf=parts.pop();
-    for(const p of parts){
-      const ev=p.match(/event: (\w+)/)?.[1];
-      const data=p.split('\n').filter(l=>l.startsWith('data: ')).map(l=>l.slice(6)).join('');
-      if(!ev)continue;const d=JSON.parse(data);
-      if(ev==='chunk'){const para=document.createElement('p');
-        if(d.text.includes('挂起'))para.className='unsupported';
-        para.textContent=(d.i+1)+'. '+d.text;$('#narr').appendChild(para);}
-      if(ev==='done')parsed=d;
+  try{
+    while(true){
+      const {done,value}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      const parts=buf.split('\n\n');buf=parts.pop();
+      for(const p of parts){
+        const ev=p.match(/event: (\w+)/)?.[1];
+        const data=p.split('\n').filter(l=>l.startsWith('data: ')).map(l=>l.slice(6)).join('');
+        if(!ev)continue;const d=JSON.parse(data);
+        if(ev==='chunk'){const para=document.createElement('p');
+          if(d.text.includes('挂起'))para.className='unsupported';
+          para.textContent=(d.i+1)+'. '+d.text;$('#narr').appendChild(para);}
+        if(ev==='done')parsed=d;
+      }
     }
-  }
+  }catch(e){ toast('解读流中断，请重试', true); return; }
   if(!parsed)return;
+  if(parsed.intent_class==='forbidden'){track('compliance_block',{text:text.slice(0,20)});return;}
   if(parsed.intent_class==='screen' && parsed.conditions.length){
     if(appendText){conditions=mergeConds(conditions,parsed.conditions);}
     else{conditions=parsed.conditions;lastSelected=new Set();}
+    track('conditions_built',{n:conditions.length,
+      inc:conditions.filter(c=>c.polarity==='include').length,
+      exc:conditions.filter(c=>c.polarity==='exclude').length,
+      unsupported:(parsed.unsupported||[]).length});
     renderConds();
   }else if(!appendText){
     $('#condCard').style.display='none';
@@ -182,6 +268,7 @@ function condHtml(c){
     <div class="top"><span class="ml">${c.metric_label} <span class="muted">${c.op} <b>${tval(c)}</b></span></span>
     <span><span class="src">${c.source==='expert_default'?'专家值':'已调整'}</span> <button data-del="${c.condition_id}">删除</button></span></div>
     <div class="caliber">口径：${c.caliber}　|　来自你的话：「${c.quote}」</div>
+    ${c.rationale?`<div class="rationale">💡 专家值为什么这么定：${c.rationale}（产品预设口径，可自行调整，不构成投资建议）</div>`:''}
     ${c.tiers ? `<div class="row" style="margin:6px 0 0"><div class="tiers">${tiers}</div>
     <input class="manual" type="number" step="any" value="${c.unit_tier==='money'?(c.value/1e8):c.value}" data-manual="${c.condition_id}">
     <span class="muted">${c.unit_tier==='money'?'亿元':c.unit||''}</span></div>` : ''}
@@ -189,14 +276,20 @@ function condHtml(c){
 }
 function bindCondEvents(){
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    track('condition_edit',{id:b.dataset.del,field:'delete'});
     conditions=conditions.filter(c=>c.condition_id!==b.dataset.del);renderConds();});
   document.querySelectorAll('.tier').forEach(b=>b.onclick=()=>{
     const c=conditions.find(x=>x.condition_id===b.dataset.id);
-    c.value=c.tiers[+b.dataset.i];c.source='user_adjusted';renderConds();});
+    const old=c.value; c.value=c.tiers[+b.dataset.i];c.source='user_adjusted';
+    track('condition_edit',{id:c.condition_id,field:'tier',from:old,to:c.value});
+    renderConds();});
   document.querySelectorAll('[data-manual]').forEach(inp=>inp.onchange=()=>{
     const c=conditions.find(x=>x.condition_id===inp.dataset.manual);
+    const old=c.value;
     c.value=c.unit_tier==='money'?parseFloat(inp.value)*1e8:parseFloat(inp.value);
-    c.source='user_adjusted';renderConds();});
+    c.source='user_adjusted';
+    track('condition_edit',{id:c.condition_id,field:'value',from:old,to:c.value});
+    renderConds();});
 }
 async function refreshTrials(){
   const r=await (await fetch('/api/trials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conditions})})).json();
@@ -221,11 +314,20 @@ function intersectCount(trials){
 $('#run').onclick=()=>runScreen(false);
 $('#refineBtn').onclick=async()=>{
   const t=$('#refine').value.trim();if(!t)return;
-  await doParse(t);$('#refine').value='';await runScreen(true);
+  track('refine_submit',{text:t.slice(0,30)});
+  await doParse(t);$('#refine').value='';const r=await runScreen(true);
+  if(r)track('refine_result',{selected:r.counts.selected});
 };
 
 async function runScreen(isRefine){
-  const r=await (await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conditions})})).json();
+  let r;
+  try{
+    const resp=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conditions})});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    r=await resp.json();
+  }catch(e){ toast('筛选服务暂时不可用，请稍后重试（你的条件不会丢失）', true); return null; }
+  track('screen_run',{n:conditions.length,selected:r.counts.selected,near:r.counts.near_miss,
+    excluded:r.counts.excluded,unk:r.counts.unknown_data+r.counts.unknown_risk,refine:!!isRefine});
   window.__result=r;
   const newSet=new Set(r.groups.selected.map(x=>x.thscode));
   if(lastSelected.size>0){
@@ -237,6 +339,7 @@ async function runScreen(isRefine){
   lastSelected=newSet;
   $('#resCard').style.display='block';
   renderTabs(r);renderPane(r);
+  return r;
 }
 const TAB_DEF=[['selected','入选 · 符合你的全部条件','green'],['near_miss','差一点 · 仅卡一条','amber'],
   ['excluded','已排除 · 触发红线','red'],['unknown_risk','风险待核实','red'],['unknown_data','数据不足','amber']];
@@ -244,7 +347,7 @@ function renderTabs(r){
   $('#tabs').innerHTML=TAB_DEF.map(([k,lab])=>{
     const n=r.counts[k]||0;return `<div class="tab ${curTab===k?'on':''}" data-tab="${k}">${lab} <span class="n">(${n})</span></div>`;
   }).join('')+`<div class="tab muted" style="cursor:default">多条不符已隐去 ${r.silent_dropped} 只</div>`;
-  document.querySelectorAll('.tab[data-tab]').forEach(t=>t.onclick=()=>{curTab=t.dataset.tab;renderTabs(r);renderPane(r);});
+  document.querySelectorAll('.tab[data-tab]').forEach(t=>t.onclick=()=>{track('tab_switch',{from:curTab,to:t.dataset.tab});curTab=t.dataset.tab;renderTabs(r);renderPane(r);});
 }
 function checksHtml(checks){
   return '<table><tr><th>条件</th><th>类型</th><th>实际值</th><th>要求</th><th>判定</th></tr>'+
@@ -265,7 +368,10 @@ function stockHtml(rec,r,k){
 function renderPane(r){
   const list=r.groups[curTab]||[];
   $('#pane').innerHTML=list.length?list.map(x=>stockHtml(x,r,curTab)).join(''):'<p class="muted" style="margin-top:12px">该分组暂无股票。</p>';
-  document.querySelectorAll('.stock .h').forEach(h=>h.onclick=()=>h.parentElement.classList.toggle('open'));
+  document.querySelectorAll('.stock .h').forEach(h=>h.onclick=()=>{
+    const el=h.parentElement; const opened=el.classList.toggle('open');
+    if(opened)track('evidence_expand',{code:el.dataset.code,tab:curTab});
+  });
 }
 </script>
 </body>

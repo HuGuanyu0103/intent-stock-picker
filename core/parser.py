@@ -8,21 +8,29 @@ import re
 # ── 指标注册表：白名单，parser/engine/UI 共用 ──────────────────────────────
 REGISTRY = {
     "np_yoy": {"label": "归母净利润同比增速", "unit": "%", "kind": "numeric",
-               "caliber": "2026 中报归母净利润同比上年同期"},
+               "caliber": "2026 中报归母净利润同比上年同期",
+               "rationale": "利润正增长是「经营改善」最直接的信号；用归母口径剔除非经常性损益干扰"},
     "rev_yoy": {"label": "营业收入同比增速", "unit": "%", "kind": "numeric",
-                "caliber": "2026 中报营业收入同比上年同期"},
+                "caliber": "2026 中报营业收入同比上年同期",
+                "rationale": "要求营收同步为正，防止靠卖资产/补贴造出的「纸面利润改善」"},
     "pe_pct": {"label": "PE-TTM 沪深300内分位", "unit": "", "kind": "numeric",
-               "caliber": "当前 PE-TTM 在沪深300 正值样本中的分位（亏损公司不参与，记为不可判定）"},
+               "caliber": "当前 PE-TTM 在沪深300 正值样本中的分位（亏损公司不参与，记为不可判定）",
+               "rationale": "绝对 PE 跨行业不可比，用池内分位衡量「相对便宜」；亏损公司 PE 无意义，直接判不可判定"},
     "vol_pct": {"label": "年化波动率分位", "unit": "", "kind": "numeric",
-                "caliber": "近 60 日日收益年化波动率在池内分位，越低越稳"},
+                "caliber": "近 60 日日收益年化波动率在池内分位，越低越稳",
+                "rationale": "「稳定」的第一维：价格波动小。分位口径天然适配「相对稳定」这类比较级表达"},
     "mdd120": {"label": "近120日最大回撤", "unit": "%", "kind": "numeric",
-               "caliber": "近 120 个交易日收盘价最大回撤幅度"},
+               "caliber": "近 120 个交易日收盘价最大回撤幅度",
+               "rationale": "「稳定」的第二维：持有期最坏体验。低波动但大回撤的股票不算稳，两条同时卡"},
     "turn20": {"label": "近20日日均成交额", "unit": "元", "kind": "numeric",
-               "caliber": "近 20 个交易日成交额均值"},
+               "caliber": "近 20 个交易日成交额均值",
+               "rationale": "流动性红线：日均成交额过低意味着冲击成本高、想卖卖不掉，5 亿是沪深300 的经验安全线"},
     "is_st": {"label": "ST/*ST 风险警示", "unit": "", "kind": "boolean",
-              "caliber": "证券名称含 ST 或 *ST"},
+              "caliber": "证券名称含 ST 或 *ST",
+              "rationale": "风险警示股存在退市与连续跌停流动性风险，是绝大多数投资者的默认红线"},
     "is_new": {"label": "新股（近6个月内上市）", "unit": "", "kind": "boolean",
-               "caliber": "近 400 个自然日窗口内日 K 不足 130 根，近似上市约 6 个月内（扶摇上市日期字段实测为空的替代口径）"},
+               "caliber": "近 400 个自然日窗口内日 K 不足 130 根，近似上市约 6 个月内（扶摇上市日期字段实测为空的替代口径）",
+               "rationale": "新股早期定价不充分、波动剧烈，与「走势稳定」类策略天然冲突"},
 }
 
 # ── 模糊词翻译词典（专家值：loose / mid / strict）──────────────────────────
@@ -92,6 +100,7 @@ def _condition(preset, cond, quote, polarity, risk="soft", on_unknown="quarantin
         "risk_level": risk,
         "on_unknown": on_unknown,
         "caliber": meta["caliber"],
+        "rationale": meta.get("rationale", ""),
         "source": "expert_default",
     }
 
@@ -108,16 +117,23 @@ def parse(text):
                 "conditions": [], "unsupported": [], "warnings": []}
 
     # 切分意图短语（顿号/逗号/中文分句/空格）
-    parts = [p.strip() for p in re.split(r"[，,、。；;\s]+", text) if p.strip()]
+    raw_parts = [p.strip() for p in re.split(r"[，,、。；;\s]+", text) if p.strip()]
+    global_exclude_word = any(k in text for k in ["剔除", "排除", "不要", "避开", "不看", "去掉", "不带"])
+    # 纯连接词/排除动词/语气碎片，不参与"未理解"挂起
+    STOP_PARTS = {"剔除", "排除", "不要", "避开", "去掉", "不看", "和", "与", "的", "了", "都", "还有", "以及"}
+    parts = [p for p in raw_parts if p not in STOP_PARTS]
     used = set()
 
     for part in parts:
         low = part
         is_exclude = any(k in low for k in ["剔除", "排除", "不要", "避开", "不看", "去掉", "没有"])
-        # 排除类：一个分句可能同时含多条红线（如"剔除ST和上市不满一年的"），不 break
+        # 排除类：一个分句可能同时含多条红线（如"剔除ST和上市不满一年的"），不 break；
+        # 分句本身被空格切掉排除动词时（"和上市不满一年的"），整句含排除词即生效
         hit_ex = False
         for ex in EXCLUDE_PRESETS:
-            if any(k in part for k in ex["keywords"]) and (is_exclude or ex["metric"] == "is_st" and "st" in low.lower()):
+            keyword_hit = any(k in part for k in ex["keywords"])
+            st_loose = (ex["metric"] == "is_st" and "st" in low.lower())
+            if keyword_hit and (is_exclude or global_exclude_word or st_loose):
                 if ex["group"] not in used:
                     excluded.append(_condition(ex, {"metric": ex["metric"], "op": ex["op"], "tiers": None,
                                                     "unit_tier": None}, part, "exclude", ex["risk"], ex["on_unknown"], ex["value"]))
