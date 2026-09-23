@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>条件协作台 · 自然语言智能选股与策略解释器</title>
+<style>
+:root{--blue:#2563eb;--red:#dc2626;--green:#16a34a;--amber:#d97706;--ink:#1f2937;--mut:#6b7280;--line:#e5e7eb;--bg:#f8fafc}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;padding:16px 20px 60px}
+header h1{font-size:20px;font-weight:700}.sub{color:var(--mut);font-size:13px;margin-top:2px}
+.statusbar{margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--mut);display:flex;gap:18px;flex-wrap:wrap}
+.statusbar b{color:var(--ink)}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:14px}
+textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:15px;resize:vertical;font-family:inherit}
+.row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 14px;font-size:13.5px;cursor:pointer;color:var(--ink)}
+button.primary{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:600}
+button:disabled{opacity:.5;cursor:not-allowed}
+.chip{font-size:12px;color:var(--blue);background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;cursor:pointer}
+.narr{font-size:14.5px}.narr p{margin:7px 0;padding-left:14px;border-left:3px solid #bfdbfe;animation:fade .3s}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+.unsupported{border-left-color:#fcd34d!important;background:#fffbeb;border-radius:0 6px 6px 0;padding:6px 10px!important}
+h2.sec{font-size:14px;font-weight:700;margin:16px 0 8px;display:flex;align-items:center;gap:8px}
+.tag{font-size:11px;padding:1px 7px;border-radius:10px;font-weight:600}
+.tag.inc{background:#eff6ff;color:var(--blue)}.tag.exc{background:#fef2f2;color:var(--red)}
+.cond{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin:8px 0}
+.cond.exclude{border-color:#fecaca;background:#fefdfd}
+.cond.pending{border-color:#fcd34d;background:#fffbeb}
+.cond .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.cond .ml{font-weight:600;font-size:14px}
+.cond .quote{font-size:12px;color:var(--mut)}
+.cond .caliber{font-size:12px;color:var(--mut);margin-top:4px}
+.tiers{display:flex;gap:6px;margin-top:8px}
+.tier{padding:3px 10px;font-size:12px;border-radius:6px;border:1px solid var(--line)}
+.tier.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.cond.exclude .tier.on{background:var(--red);border-color:var(--red)}
+.manual{width:110px;font-size:13px;padding:3px 6px;border:1px solid var(--line);border-radius:6px}
+.src{font-size:11px;color:var(--mut)}
+.warn{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:8px;padding:8px 12px;font-size:13px;margin-top:10px}
+.tabs{display:flex;gap:6px;margin-top:14px;border-bottom:1px solid var(--line)}
+.tab{padding:8px 14px;font-size:13.5px;cursor:pointer;border-bottom:2px solid transparent;color:var(--mut)}
+.tab.on{color:var(--ink);border-bottom-color:var(--blue);font-weight:600}
+.tab .n{font-weight:700}
+.stock{border:1px solid var(--line);border-radius:9px;margin:8px 0;overflow:hidden}
+.stock>div.h{padding:9px 12px;display:flex;justify-content:space-between;cursor:pointer;font-size:14px}
+.stock .body{padding:0 12px 10px;display:none;font-size:12.5px}
+.stock.open .body{display:block}
+table{border-collapse:collapse;width:100%;margin-top:6px}
+td,th{border:1px solid var(--line);padding:4px 8px;text-align:left;font-size:12.5px}
+th{background:#f9fafb;font-weight:600}
+.pass{color:var(--green)}.fail{color:var(--red)}.unknown{color:var(--amber)}
+.added{background:#f0fdf4}.removed{background:#fef2f2;opacity:.7}
+.gap{color:var(--red);font-size:12.5px;margin-top:3px}
+.muted{color:var(--mut);font-size:12.5px}
+.disc{margin-top:18px;font-size:11.5px;color:var(--mut);border-top:1px solid var(--line);padding-top:10px}
+.badge-new{background:var(--green);color:#fff;font-size:10px;padding:0 6px;border-radius:8px;margin-left:6px}
+.badge-out{background:var(--red);color:#fff;font-size:10px;padding:0 6px;border-radius:8px;margin-left:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>条件协作台 —— 自然语言智能选股与策略解释器</h1>
+  <div class="sub">AI 把你的模糊想法翻译成可检查、可修改、可追溯的条件；机器只负责诚实地算数。入选 = 符合你设定的条件，不代表涨跌预测或投资建议。</div>
+</header>
+<div class="statusbar" id="status">加载中…</div>
+
+<div class="card">
+  <textarea id="q" rows="2" placeholder="用大白话描述你想找什么样的股票，例如：经营改善、估值合理、走势相对稳定，剔除 ST 和上市不满一年的新股"></textarea>
+  <div class="row">
+    <button class="primary" id="go">解读我的要求</button>
+    <span class="chip" data-q="经营改善、估值合理、走势相对稳定，剔除 ST 和上市不满一年的">示例：标准三连</span>
+    <span class="chip" data-q="低估值、业绩增长、成交活跃，不要ST">示例：活跃价值</span>
+    <span class="chip" data-q="便宜的好公司，剔除银行板块，下周会涨停的来几个">示例：含未理解与违规</span>
+  </div>
+  <div class="narr" id="narr" style="margin-top:12px"></div>
+</div>
+
+<div class="card" id="condCard" style="display:none">
+  <h2 class="sec">数据条件 <span class="muted">（每张卡可改阈值/口径；黄色=待你确认，红色=一票否决）</span></h2>
+  <div id="conds"></div>
+  <div id="conflict"></div>
+  <div class="row" style="justify-content:space-between">
+    <div id="estimate" class="muted"></div>
+    <div class="row" style="margin:0">
+      <button class="primary" id="run">运行筛选</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="resCard" style="display:none">
+  <div class="row" style="justify-content:space-between;align-items:center">
+    <h2 class="sec" style="margin:0">筛选结果</h2>
+    <div class="row" style="margin:0">
+      <input class="manual" style="width:260px" id="refine" placeholder="在当前结果里再加要求，如：成交额 10 亿以上">
+      <button id="refineBtn">追加条件</button>
+    </div>
+  </div>
+  <div id="diffInfo"></div>
+  <div class="tabs" id="tabs"></div>
+  <div id="pane"></div>
+</div>
+
+<div class="disc">
+  数据来源：扶摇金融数据 API（沪深300 成分、估值快照、财务指标、日K），每日盘后预热；事实值（黑）/ AI 对意图的理解（蓝标）/ 不确定（黄）三色区分。
+  本产品不输出涨跌预测、收益承诺或买卖建议；条件与专家值均为产品预设口径，可自行调整，不构成投资建议。样本池：沪深300。
+</div>
+</div>
+
+<script>
+let conditions=[], lastSelected=new Set(), curTab='selected', health=null;
+const $=s=>document.querySelector(s);
+const fmt=(c,v)=>{
+  if(v===null||v===undefined) return '--';
+  if(['pe_pct','vol_pct'].includes(c.metric)) return (v*100).toFixed(0)+'%';
+  if(c.metric==='turn20') return (v/1e8).toFixed(2)+' 亿';
+  if(c.unit==='%') return Number(v).toFixed(1)+'%';
+  if(typeof v==='boolean') return v?'是':'否';
+  return (typeof v==='number'?Number(v).toFixed(2):String(v));
+};
+const tval=c=>fmt(c,c.value);
+
+fetch('/api/health').then(r=>r.json()).then(h=>{health=h;
+  $('#status').innerHTML=`<span>样本池：<b>${h.n}</b> 只（沪深300）</span><span>数据时点：<b>${h.as_of}</b></span><span>模式：<b>${h.mode==='live'?'真实数据（预热缓存）':'样例数据'}</b></span><span>${h.engine}</span>`;
+});
+
+document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{$('#q').value=ch.dataset.q;doParse();});
+$('#go').onclick=doParse;
+
+async function doParse(appendText){
+  const text=appendText||$('#q').value;
+  $('#narr').innerHTML=''; $('#condCard').style.display='none';
+  const resp=await fetch('/api/parse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+  const reader=resp.body.getReader();const dec=new TextDecoder();let buf='';
+  let parsed=null;
+  while(true){
+    const {done,value}=await reader.read();if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    const parts=buf.split('\n\n');buf=parts.pop();
+    for(const p of parts){
+      const ev=p.match(/event: (\w+)/)?.[1];
+      const data=p.split('\n').filter(l=>l.startsWith('data: ')).map(l=>l.slice(6)).join('');
+      if(!ev)continue;const d=JSON.parse(data);
+      if(ev==='chunk'){const para=document.createElement('p');
+        if(d.text.includes('挂起'))para.className='unsupported';
+        para.textContent=(d.i+1)+'. '+d.text;$('#narr').appendChild(para);}
+      if(ev==='done')parsed=d;
+    }
+  }
+  if(!parsed)return;
+  if(parsed.intent_class==='screen' && parsed.conditions.length){
+    if(appendText){conditions=mergeConds(conditions,parsed.conditions);}
+    else{conditions=parsed.conditions;lastSelected=new Set();}
+    renderConds();
+  }else if(!appendText){
+    $('#condCard').style.display='none';
+  }
+}
+
+function mergeConds(oldCs,newCs){
+  const ids=new Set(oldCs.map(c=>c.condition_id));
+  return oldCs.concat(newCs.filter(c=>!ids.has(c.condition_id)));
+}
+
+function renderConds(){
+  $('#condCard').style.display='block';
+  const inc=conditions.filter(c=>c.polarity==='include'),exc=conditions.filter(c=>c.polarity==='exclude');
+  let html='';
+  if(inc.length){html+='<h2 class="sec"><span class="tag inc">我想要的</span></h2>'+inc.map(condHtml).join('');}
+  if(exc.length){html+='<h2 class="sec"><span class="tag exc">我不要的（一票否决/偏好）</span></h2>'+exc.map(condHtml).join('');}
+  $('#conds').innerHTML=html;
+  bindCondEvents();refreshTrials();
+}
+function condHtml(c){
+  const tiers=c.tiers?['宽松','适中','严格'].map((lab,i)=>{
+    const on=c.value===c.tiers[i]?'on':'';
+    return `<button class="tier ${on}" data-id="${c.condition_id}" data-i="${i}">${lab} ${fmt(c,c.tiers[i])}</button>`;
+  }).join(''):`<span class="muted">布尔红线条件</span>`;
+  return `<div class="cond ${c.polarity==='exclude'?'exclude':''} ${c.needs_confirm?'pending':''}" data-id="${c.condition_id}">
+    <div class="top"><span class="ml">${c.metric_label} <span class="muted">${c.op} <b>${tval(c)}</b></span></span>
+    <span><span class="src">${c.source==='expert_default'?'专家值':'已调整'}</span> <button data-del="${c.condition_id}">删除</button></span></div>
+    <div class="caliber">口径：${c.caliber}　|　来自你的话：「${c.quote}」</div>
+    <div class="row" style="margin:6px 0 0"><div class="tiers">${tiers}</div>
+    <input class="manual" type="${c.unit_tier==='money'?'number':'number'}" step="any" value="${c.unit_tier==='money'?(c.value/1e8):c.value}" data-manual="${c.condition_id}">
+    <span class="muted">${c.unit_tier==='money'?'亿元':c.unit||''}</span></div>
+  </div>`;
+}
+function bindCondEvents(){
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    conditions=conditions.filter(c=>c.condition_id!==b.dataset.del);renderConds();});
+  document.querySelectorAll('.tier').forEach(b=>b.onclick=()=>{
+    const c=conditions.find(x=>x.condition_id===b.dataset.id);
+    c.value=c.tiers[+b.dataset.i];c.source='user_adjusted';renderConds();});
+  document.querySelectorAll('[data-manual]').forEach(inp=>inp.onchange=()=>{
+    const c=conditions.find(x=>x.condition_id===inp.dataset.manual);
+    c.value=c.unit_tier==='money'?parseFloat(inp.value)*1e8:parseFloat(inp.value);
+    c.source='user_adjusted';renderConds();});
+}
+async function refreshTrials(){
+  const r=await (await fetch('/api/trials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conditions})})).json();
+  const by=Object.fromEntries(r.trials.map(t=>[t.condition_id,t]));
+  document.querySelectorAll('.cond').forEach(el=>{
+    const t=by[el.dataset.id];if(!t)return;
+    let e=el.querySelector('.trial');if(!e){e=document.createElement('div');e.className='trial muted';e.style.marginTop='4px';el.appendChild(e);}
+    e.textContent=t.polarity==='exclude'?`将剔除 ${t.pass} 只${t.unknown?`，${t.unknown} 只无法核实`:''}`:`${t.pass}/${t.total} 只满足${t.unknown?`，${t.unknown} 只无数据`:''}`;
+  });
+  const cf=$('#conflict');
+  if(r.conflicts.length){cf.innerHTML=r.conflicts.map(x=>`<div class="warn">⚠️ 硬冲突：条件 ${x.ids.join('、')} 对「${x.metric}」的阈值区间无交集，请修改后再运行。</div>`).join('');$('#run').disabled=true;}
+  else{cf.innerHTML='';$('#run').disabled=false;}
+  const inter=intersectCount(r.trials);
+  $('#estimate').textContent=inter===null?'':'预计命中（条件交集粗估）：'+inter+' 只 —— 实际结果以执行为准';
+}
+function intersectCount(trials){
+  // 粗估：min(include pass) - 排除，仅作运行前量级感知
+  const inc=trials.filter(t=>t.polarity==='include');if(!inc.length)return null;
+  return Math.max(0,Math.min(...inc.map(t=>t.pass))-trials.filter(t=>t.polarity==='exclude').reduce((s,t)=>s+t.pass,0));
+}
+
+$('#run').onclick=()=>runScreen(false);
+$('#refineBtn').onclick=async()=>{
+  const t=$('#refine').value.trim();if(!t)return;
+  await doParse(t);$('#refine').value='';await runScreen(true);
+};
+
+async function runScreen(isRefine){
+  const r=await (await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conditions})})).json();
+  window.__result=r;
+  if(isRefine){
+    const newSet=new Set(r.groups.selected.map(x=>x.thscode));
+    const added=[...newSet].filter(x=>!lastSelected.has(x)).length;
+    const removed=[...lastSelected].filter(x=>!newSet.has(x)).length;
+    $('#diffInfo').innerHTML=`<div class="${added||removed?'warn':''}" style="background:#f0fdf4;border-color:#bbf7d0;color:#166534">条件已更新：新增 <b>${added}</b> 只、掉出 <b>${removed}</b> 只，当前入选 <b>${r.counts.selected}</b> 只（新增绿色标记）。</div>`;
+    r.__added=newSet;
+  }else{$('#diffInfo').innerHTML='';r.__added=new Set();}
+  lastSelected=new Set(r.groups.selected.map(x=>x.thscode));
+  $('#resCard').style.display='block';
+  renderTabs(r);renderPane(r);
+}
+const TAB_DEF=[['selected','入选 · 符合你的全部条件','green'],['near_miss','差一点 · 仅卡一条','amber'],
+  ['excluded','已排除 · 触发红线','red'],['unknown_risk','风险待核实','red'],['unknown_data','数据不足','amber']];
+function renderTabs(r){
+  $('#tabs').innerHTML=TAB_DEF.map(([k,lab])=>{
+    const n=r.counts[k]||0;return `<div class="tab ${curTab===k?'on':''}" data-tab="${k}">${lab} <span class="n">(${n})</span></div>`;
+  }).join('')+`<div class="tab muted" style="cursor:default">多条不符已隐去 ${r.silent_dropped} 只</div>`;
+  document.querySelectorAll('.tab[data-tab]').forEach(t=>t.onclick=()=>{curTab=t.dataset.tab;renderTabs(r);renderPane(r);});
+}
+function checksHtml(checks){
+  return '<table><tr><th>条件</th><th>类型</th><th>实际值</th><th>要求</th><th>判定</th></tr>'+
+    checks.map(x=>`<tr><td>${x.metric_label}</td><td>${x.polarity==='include'?'正向':'排除'}</td>
+    <td>${x.actual}</td><td>${x.op} ${x.threshold}</td><td class="${x.result}">${{pass:'✔ 满足',fail:'✘ 不满足',unknown:'? 无数据'}[x.result]}</td></tr>`).join('')+'</table>';
+}
+function stockHtml(rec,r,k){
+  let badge='';
+  if(k==='selected'&&r.__added&&r.__added.has(rec.thscode))badge='<span class="badge-new">新增</span>';
+  let extra='';
+  if(k==='near_miss')extra=`<div class="gap">卡点：${rec.gap}</div>`;
+  if(k==='excluded')extra=`<div class="gap">触发排除：${rec.reasons.join('；')}</div>`;
+  if(k.startsWith('unknown'))extra=`<div class="gap unknown">无法判定字段：${(rec.reasons||[]).join('；')}</div>`;
+  const fit=k==='selected'?`<span class="muted">贴合度 ${(rec.fit*100).toFixed(0)}</span>`:'';
+  return `<div class="stock" data-code="${rec.thscode}"><div class="h"><span>${rec.name} ${rec.thscode}${badge}</span><span>${fit}<span class="muted" style="margin-left:8px">展开证据 ▾</span></span></div>
+  <div class="body">${extra}${checksHtml(rec.checks)}</div></div>`;
+}
+function renderPane(r){
+  const list=r.groups[curTab]||[];
+  $('#pane').innerHTML=list.length?list.map(x=>stockHtml(x,r,curTab)).join(''):'<p class="muted" style="margin-top:12px">该分组暂无股票。</p>';
+  document.querySelectorAll('.stock .h').forEach(h=>h.onclick=()=>h.parentElement.classList.toggle('open'));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+data/raw/
+data/preheat.log
+data/server.log
+.env
