@@ -41,10 +41,28 @@ def build_matrix():
     indicators = _load("indicators.json")
     klines = _load("klines.json")
 
+    # 行业/概念反查表（来自 710 个指数成分预热；文件缺失时降级为空）
+    stock_industries, stock_concepts = {}, {}
+    sec = {"industry": {}, "concept": {}}
+    sector_path = os.path.join(RAW, "sector_members.json")
+    if os.path.exists(sector_path):
+        sec = _load("sector_members.json")["members"]
+        for idx_name, codes in sec.get("industry", {}).items():
+            for code in codes:
+                stock_industries.setdefault(code, []).append(idx_name)
+        for idx_name, codes in sec.get("concept", {}).items():
+            for code in codes:
+                stock_concepts.setdefault(code, []).append(idx_name)
+
     stocks = {}
     for c in constituents:
         code, name = c["thscode"], c["name"]
         row = {"thscode": code, "name": name}
+        # industry=最细分行业（展示用）；industries=全部归属（行业条件判定用）
+        inds = stock_industries.get(code, [])
+        row["industry"] = min(inds, key=lambda n: len(sec["industry"][n])) if inds else None
+        row["industries"] = inds
+        row["concepts"] = stock_concepts.get(code, [])
 
         # 交易过滤类
         row["is_st"] = ("ST" in name.upper())
@@ -101,14 +119,34 @@ def build_matrix():
     pe_vals = [stocks[c]["pe_ttm"] if (stocks[c]["pe_ttm"] or 0) > 0 else None for c in codes]
     for c, rk in zip(codes, (_pct_rank(pe_vals).get(i) for i in range(len(codes)))):
         stocks[c]["pe_pct"] = rk
-    for metric, key in [("vol_ann", "vol_pct"), ("mdd120", "mdd_pct")]:
-        vals = [stocks[c][metric] for c in codes]
+    # 全部数值指标的池内横截面分位（用于跨指标可比的贴合度排序）
+    pct_specs = [("vol_ann", "vol_pct"), ("mdd120", "mdd_pct"),
+                 ("np_yoy", "np_pct"), ("rev_yoy", "rev_pct"), ("turn20", "turn_pct")]
+    for metric, key in pct_specs:
+        vals = [stocks[c].get(metric) for c in codes]
         ranks = _pct_rank(vals)
         for i, c in enumerate(codes):
             stocks[c][key] = ranks.get(i)
 
-    as_of = "2026-09-23 收盘（每日盘后预热）"
-    return {"as_of": as_of, "n": len(stocks), "stocks": stocks}
+    # 批次质量：关键指标缺失率 + 行业覆盖率，超阈值标 degraded
+    n = len(stocks)
+    unknown_rates = {}
+    for metric in ("np_yoy", "rev_yoy", "pe_pct", "vol_pct", "mdd_pct", "turn_pct"):
+        miss = sum(1 for s in stocks.values() if s.get(metric) is None)
+        unknown_rates[metric] = round(miss / n, 3) if n else 1.0
+    industry_cov = round(sum(1 for s in stocks.values() if s.get("industry")) / n, 3) if n else 0
+    degraded = any(rate > 0.15 for rate in unknown_rates.values()) or industry_cov < 0.9
+
+    # 数据时点：快照 timestamp 实测多为 null，改用 K 线最后交易日（真实可靠）
+    last_dates = []
+    for kl in klines.values():
+        if isinstance(kl, list) and kl:
+            last_dates.append(kl[-1].get("date_ms"))
+    as_of = (datetime.fromtimestamp(max(last_dates) / 1000).strftime("%Y-%m-%d") + " 收盘（盘后预热）"
+             if last_dates else "数据时点未知（预热快照）")
+    return {"as_of": as_of, "n": n, "stocks": stocks,
+            "health": {"degraded": degraded, "unknown_rates": unknown_rates,
+                       "industry_coverage": industry_cov}}
 
 
 if __name__ == "__main__":

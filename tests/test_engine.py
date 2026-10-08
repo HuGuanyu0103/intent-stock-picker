@@ -31,7 +31,8 @@ r3 = P.parse("推荐下周涨停的黑马")
 check("荐股/预测意图被拦截", r3["intent_class"] == "forbidden")
 
 r4 = P.parse("便宜的好公司，剔除银行板块")
-check("行业类不可量化表达进 unsupported 而非硬编", any("银行" in u["quote"] for u in r4["unsupported"]))
+check("「剔除银行板块」生成行业排除条件",
+      any(c["metric"] == "industry" and c["polarity"] == "exclude" for c in r4["conditions"]))
 check("便宜映射为估值分位而非绝对股价", any(c["metric"] == "pe_pct" for c in r4["conditions"]))
 
 r5 = P.parse("低估值的不要")
@@ -78,6 +79,47 @@ m2 = {"n": 4, "stocks": dict(matrix["stocks"])}
 res2 = E.run(m2, [c for c in conds if c["metric"] != "is_st"])
 d = E.diff_codes(res, res2)
 check("diff 能识别新增/掉出", "C" in [x["thscode"] for x in d["added"]])
+
+# ── 否定词处理（用户实抓问题类的回归锁）──────────────────────────────────
+n1 = P.parse("不稳定的股票")
+n1c = n1["conditions"]
+check("「不稳定」翻转为高波动/大回撤 include 条件",
+      any(c["metric"] == "vol_pct" and c["op"] == ">=" and c["polarity"] == "include" for c in n1c)
+      and any(c["metric"] == "mdd120" and c["op"] == ">=" for c in n1c))
+n2 = P.parse("不要不稳定的")
+check("「不要不稳定」翻转为 exclude 高波动",
+      all(c["polarity"] == "exclude" for c in n2["conditions"]) and len(n2["conditions"]) == 2)
+n3 = P.parse("不便宜的")
+check("「不便宜」反直觉，挂起而非反向硬选", len(n3["conditions"]) == 0 and len(n3["unsupported"]) == 1)
+n4 = P.parse("业绩没增长的")
+check("「没增长」挂起澄清", len(n4["conditions"]) == 0 and len(n4["unsupported"]) == 1)
+n5 = P.parse("走势稳定，不抗跌的不要")
+check("同句正反义共存不串味",
+      any(c["metric"] == "vol_pct" and c["polarity"] == "include" and c["op"] == "<=" for c in n5["conditions"])
+      and any(c["polarity"] == "exclude" for c in n5["conditions"]))
+
+# ── 行业集合条件（合成矩阵；无预热数据时 parser 词表为空，用直接构造条件测引擎）──
+set_matrix = {"n": 3, "stocks": {
+    "Y": {"name": "银行甲", "industries": ["银行", "国有大型银行"], "concepts": []},
+    "Z": {"name": "白酒乙", "industries": ["白酒"], "concepts": []},
+    "W": {"name": "无行业", "industries": [], "concepts": []},
+}}
+inc_set = [{"condition_id": "s1", "metric": "industry", "op": "in", "value": ["银行"],
+            "metric_label": "所属行业", "tiers": None, "unit_tier": None, "unit": "", "polarity": "include"}]
+sr = E.run(set_matrix, inc_set)
+check("行业 in：银行股入选、白酒不入选",
+      any(x["thscode"] == "Y" for x in sr["groups"]["selected"])
+      and not any(x["thscode"] == "Z" for x in sr["groups"]["selected"]))
+exc_set = [{**inc_set[0], "polarity": "exclude"}]
+sr2 = E.run(set_matrix, exc_set)
+check("行业 exclude：银行股进排除组且投影为「不属于」红线",
+      any(x["thscode"] == "Y" for x in sr2["groups"]["excluded"]))
+y_show = next(c for x in sr2["groups"]["excluded"] if x["thscode"] == "Y"
+              for c in x["checks"] if c["condition_id"] == "s1")
+check("行业排除证据显示「不属于」", y_show["op"] == "不属于" and y_show["result"] == "fail")
+check("无行业归属：include 时进数据不足；exclude 软偏好 ignore 时不影响入选",
+      any(x["thscode"] == "W" for x in sr["groups"]["unknown_data"])
+      and any(x["thscode"] == "W" for x in sr2["groups"]["selected"]))
 
 print(f"\n{len(FAILS)} 个失败" if FAILS else "\n全部通过")
 sys.exit(1 if FAILS else 0)

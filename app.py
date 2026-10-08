@@ -27,7 +27,8 @@ def index():
 def health():
     return jsonify({"as_of": MATRIX["as_of"], "n": MATRIX["n"],
                     "mode": "sample" if not os.environ.get("FUYAO_API_KEY") else "live",
-                    "engine": "确定性三值判定，LLM 不参与选股结果"})
+                    "engine": "确定性三值判定，LLM 不参与选股结果",
+                    "health": MATRIX.get("health", {})})
 
 
 @app.post("/api/parse")
@@ -48,9 +49,12 @@ def parse_stream():
 
 @app.post("/api/trials")
 def trials():
+    """逐卡边缘计数 + 完整判定的真实分组数（毫秒级，消除粗估偏差）。"""
     conditions = (request.json or {}).get("conditions", [])
-    return jsonify({"trials": engine.trial_counts(MATRIX, conditions),
-                    "conflicts": engine._hard_conflicts(conditions)})
+    result = engine.run(MATRIX, conditions)
+    return jsonify({"trials": result["trials"],
+                    "conflicts": result["conflicts"],
+                    "real_counts": result["counts"]})
 
 
 @app.post("/api/events")

@@ -1,5 +1,10 @@
 """确定性筛选引擎：条件编译、三值判定、四分组、逐卡试算、贴合度排序、结果 diff。
 LLM 不参与任何判定；所有解释数字都来自本模块的判定结果。"""
+import bisect
+
+# 数值条件 metric → 该股的池内分位字段（贴合度排序统一在分位空间计算，跨指标可比）
+_PCT_FIELD = {"np_yoy": "np_pct", "rev_yoy": "rev_pct", "pe_pct": "pe_pct",
+              "vol_pct": "vol_pct", "mdd120": "mdd_pct", "turn20": "turn_pct"}
 
 _OPS = {
     ">": lambda a, b: a > b,
@@ -8,11 +13,24 @@ _OPS = {
     "<=": lambda a, b: a <= b,
     "==": lambda a, b: a == b,
     "!=": lambda a, b: a != b,
+    "in": lambda a, b: bool(set(a) & set(b)),
 }
+
+_SET_METRICS = ("industry", "concept")
 
 
 def _check(stock, cond):
-    """返回 pass / fail / unknown + 实际值。"""
+    """返回 pass / fail / unknown + 实际值。集合条件取股票的归属列表。"""
+    if cond["metric"] in _SET_METRICS:
+        if cond["op"] != "in":
+            return "unknown", None
+        if cond["metric"] == "industry":
+            members = stock.get("industries") or ([stock["industry"]] if stock.get("industry") else [])
+        else:
+            members = stock.get("concepts") or []
+        if not members:
+            return "unknown", []
+        return ("pass" if _OPS["in"](members, cond["value"]) else "fail"), members
     v = stock.get(cond["metric"])
     if v is None:
         return "unknown", None
@@ -26,6 +44,8 @@ def _check(stock, cond):
 def _fmt(cond, v):
     if v is None:
         return "--"
+    if cond["metric"] in _SET_METRICS:
+        return "、".join(v[:4]) + ("等" if len(v) > 4 else "") if v else "无归属"
     if cond["metric"] in ("pe_pct", "vol_pct"):
         return f"{v*100:.0f}%"
     if cond["unit_tier"] == "money" or cond["metric"] == "turn20":
@@ -38,6 +58,9 @@ def _fmt(cond, v):
 
 
 def _threshold_text(cond):
+    if cond["metric"] in _SET_METRICS:
+        names = cond["value"]
+        return "、".join(names[:4]) + ("等" if len(names) > 4 else "")
     return _fmt(cond, cond["value"])
 
 
@@ -76,6 +99,7 @@ def _hard_conflicts(conditions):
 REG_KIND = {  # 与 parser.REGISTRY 保持同步的轻量类型表
     "np_yoy": "numeric", "rev_yoy": "numeric", "pe_pct": "numeric", "vol_pct": "numeric",
     "mdd120": "numeric", "turn20": "numeric", "is_st": "boolean", "is_new": "boolean",
+    "industry": "enum_set", "concept": "enum_set",
 }
 
 
@@ -86,6 +110,13 @@ def run(matrix, conditions):
 
     groups = {"selected": [], "near_miss": [], "excluded": [],
               "unknown_data": [], "unknown_risk": []}
+
+    # 贴合度上下文：每个数值指标的池内有效值升序列表（阈值→池内分位 CDF 用）
+    fit_ctx = {}
+    for metric, pct_field in _PCT_FIELD.items():
+        vals = sorted(v for v in (s.get(metric) for s in matrix["stocks"].values()) if v is not None)
+        if vals:
+            fit_ctx[metric] = vals
 
     for code, s in matrix["stocks"].items():
         checks = []
@@ -102,7 +133,9 @@ def run(matrix, conditions):
                 elif r == "fail":
                     show_r = "pass"
                 show_op = {"==": "≠", "!=": "==", ">": "≤", ">=": "<",
-                           "<": "≥", "<=": ">"}.get(c["op"], c["op"])
+                           "<": "≥", "<=": ">", "in": "不属于"}.get(c["op"], c["op"])
+                if c["metric"] in _SET_METRICS:
+                    show_op = "不属于"  # 红线要求语句固定为「不属于 X」
             checks.append({"condition_id": c["condition_id"], "metric_label": c["metric_label"],
                            "polarity": c["polarity"], "result": show_r, "op": show_op,
                            "actual": _fmt(c, v), "actual_raw": v,
@@ -132,7 +165,7 @@ def run(matrix, conditions):
             rec["reasons"] = miss
             groups["unknown_data"].append(rec)
         elif inc_fail == 0:
-            rec["fit"] = _fit_score(s, inc)
+            rec["fit"] = _fit_score(s, inc, fit_ctx)
             groups["selected"].append(rec)
         elif inc_fail == 1:
             bad = next(x for x in checks if x["polarity"] == "include" and x["result"] == "fail")
@@ -148,20 +181,27 @@ def run(matrix, conditions):
             "trials": trial_counts(matrix, conditions)}
 
 
-def _fit_score(stock, inc):
-    """最短板贴合度：所有 include 条件的标准化裕度取最小值（越大越贴合）。"""
+def _fit_score(stock, inc, fit_ctx):
+    """最短板贴合度：所有 include 数值条件的「池内分位裕度」取最小值。
+
+    把实际值与阈值都映射到池内横截面分位，margin ∈ [-1,1]，跨指标可比：
+    <= 类 margin = 阈值分位 − 实际分位；>= 类反之。布尔/集合条件不参与排序（中性 1.0）。
+    """
     margins = []
     for c in inc:
-        v = stock.get(c["metric"])
-        if v is None:
-            continue
-        t = c["value"]
+        metric = c["metric"]
+        pct_field = _PCT_FIELD.get(metric)
+        vals = fit_ctx.get(metric)
+        actual_pct = stock.get(pct_field) if pct_field else None
+        if not vals or actual_pct is None:
+            continue  # 非数值/无分位条件不参与最短板
+        thr_pct = bisect.bisect_right(vals, c["value"]) / len(vals)
         if c["op"] in ("<", "<="):
-            margins.append((t - v) / abs(t) if t else 0.0)
+            margins.append(thr_pct - actual_pct)
         elif c["op"] in (">", ">="):
-            margins.append((v - t) / (abs(t) or 1.0))
+            margins.append(actual_pct - thr_pct)
         else:
-            margins.append(1.0 if v == t else 0.0)
+            margins.append(1.0 if stock.get(metric) == c["value"] else 0.0)
     return min(margins) if margins else 0.0
 
 

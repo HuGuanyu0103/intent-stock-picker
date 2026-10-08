@@ -196,7 +196,9 @@ $('#saveScheme').onclick=()=>{
 renderSaved();
 
 fetch('/api/health').then(r=>r.json()).then(h=>{health=h;
-  $('#status').innerHTML=`<span>样本池：<b>${h.n}</b> 只（沪深300）</span><span>数据时点：<b>${h.as_of}</b></span><span>模式：<b>${h.mode==='live'?'真实数据（预热缓存）':'样例数据'}</b></span><span>${h.engine}</span>`;
+  const warn = h.health && h.health.degraded
+    ? `<span style="color:#b91c1c;font-weight:600">⚠️ 部分数据源异常（关键指标缺失率超阈值），结果可能不完整，请查看各股「不可判定」分组</span>` : '';
+  $('#status').innerHTML=`<span>样本池：<b>${h.n}</b> 只（沪深300）</span><span>数据时点：<b>${h.as_of}</b></span><span>模式：<b>${h.mode==='live'?'真实数据（预热缓存）':'样例数据'}</b></span><span>${h.engine}</span>${warn}`;
 });
 
 document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{$('#q').value=ch.dataset.q;doParse();});
@@ -264,7 +266,12 @@ function condHtml(c){
     const on=c.value===c.tiers[i]?'on':'';
     return `<button class="tier ${on}" data-id="${c.condition_id}" data-i="${i}">${lab} ${fmt(c,c.tiers[i])}</button>`;
   }).join(''):`<span class="muted">布尔红线条件</span>`;
-  const headExpr = (c.polarity==='exclude' && c.metric && c.metric.startsWith('is_'))
+  const setNames=Array.isArray(c.value)?c.value:null;
+  const headExpr = setNames
+    ? (c.polarity==='exclude'
+      ? `<span class="muted">红线要求：<b>不属于「${setNames.slice(0,4).join('、')}${setNames.length>4?'等':''}」</b></span>`
+      : `<span class="muted">只保留属于 <b>「${setNames.slice(0,4).join('、')}${setNames.length>4?'等':''}」</b> 的公司</span>`)
+    : (c.polarity==='exclude' && c.metric && c.metric.startsWith('is_'))
     ? `<span class="muted">红线要求：该标志必须为 <b>「否」</b>（即不属于${c.metric_label.replace(/（.*?）/g,'')}）</span>`
     : `<span class="muted">${c.op} <b>${tval(c)}</b></span>`;
   return `<div class="cond ${c.polarity==='exclude'?'exclude':''} ${c.needs_confirm?'pending':''}" data-id="${c.condition_id}">
@@ -305,13 +312,10 @@ async function refreshTrials(){
   const cf=$('#conflict');
   if(r.conflicts.length){cf.innerHTML=r.conflicts.map(x=>`<div class="warn">⚠️ 硬冲突：条件 ${x.ids.join('、')} 对「${x.metric}」的阈值区间无交集，请修改后再运行。</div>`).join('');$('#run').disabled=true;}
   else{cf.innerHTML='';$('#run').disabled=false;}
-  const inter=intersectCount(r.trials);
-  $('#estimate').textContent=inter===null?'':'预计命中（条件交集粗估）：'+inter+' 只 —— 实际结果以执行为准';
-}
-function intersectCount(trials){
-  // 粗估：min(include pass) - 排除，仅作运行前量级感知
-  const inc=trials.filter(t=>t.polarity==='include');if(!inc.length)return null;
-  return Math.max(0,Math.min(...inc.map(t=>t.pass))-trials.filter(t=>t.polarity==='exclude').reduce((s,t)=>s+t.pass,0));
+  const c=r.real_counts||{};
+  $('#estimate').innerHTML = c.selected!=null
+    ? `按当前条件实算：入选 <b style="color:${c.selected>50?'#d97706':'#16a34a'}">${c.selected}</b> 只 · 差一点 ${c.near_miss||0} · 已排除 ${c.excluded||0} · 不可判定 ${(c.unknown_data||0)+(c.unknown_risk||0)}（与运行结果一致）`
+    : '';
 }
 
 $('#run').onclick=()=>runScreen(false);

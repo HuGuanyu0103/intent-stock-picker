@@ -3,7 +3,37 @@
 产品立场：翻译规则是预注册、可解释、可在 README 公开的；解析器不发明指标。
 环境变量 LLM_API_KEY 存在时可在 llm_enhance 中接入大模型，MVP 默认走规则，行为可复现。
 """
+import json
+import os
 import re
+import zlib
+
+_SECTOR_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "raw", "sector_members.json")
+_SECTORS = None  # lazy load: {"industry": [names], "concept": [names]}
+
+
+def _sector_tables():
+    global _SECTORS
+    if _SECTORS is None:
+        try:
+            with open(_SECTOR_PATH, encoding="utf-8") as f:
+                m = json.load(f)["members"]
+            _SECTORS = {"industry": sorted(m.get("industry", {}).keys()),
+                        "concept": sorted(m.get("concept", {}).keys())}
+        except (OSError, ValueError, KeyError):
+            _SECTORS = {"industry": [], "concept": []}
+    return _SECTORS
+
+
+def _match_sector(part):
+    """词 → 行业/概念指数名（双向子串）；命中过多视为歧义。返回 (kind, names) 列表。"""
+    hits = []
+    for kind in ("industry", "concept"):
+        names = [n for n in _sector_tables()[kind] if n in part or (len(part) >= 2 and part in n)]
+        names = sorted(set(names), key=len)
+        if names:
+            hits.append((kind, names[:12], len(names) > 12))
+    return hits
 
 # ── 指标注册表：白名单，parser/engine/UI 共用 ──────────────────────────────
 REGISTRY = {
@@ -35,14 +65,17 @@ REGISTRY = {
 
 # ── 模糊词翻译词典（专家值：loose / mid / strict）──────────────────────────
 # 每个意图落成一个或多个条件；tiers 为三档阈值
+# negation: "flip"=否定可可靠翻转为反向条件；"ask"=否定反直觉，必须挂起澄清
 PRESETS = [
     {
-        "group": "g_improve", "keywords": ["经营改善", "业绩改善", "业绩增长", "盈利改善", "经营好转", "基本面改善"],
+        "group": "g_improve", "keywords": ["经营改善", "业绩改善", "业绩增长", "盈利改善", "经营好转", "基本面改善", "增长"],
         "say": "「经营改善」我按产品预设口径翻译成：最新中报归母净利润与营业收入双双同比正增长。",
         "conditions": [
             {"metric": "np_yoy", "op": ">", "tiers": [0, 0, 5], "unit_tier": None},
             {"metric": "rev_yoy", "op": ">", "tiers": [0, 0, 5], "unit_tier": None},
         ],
+        "negation": "ask",
+        "neg_say": "你提到了「{kw}」的反义说法（如业绩没增长/不增长）——这通常意味着要排除业绩下滑的公司。我没有擅自翻译，请在卡片上确认：是要剔除业绩不增长的，还是你在描述别的意思？",
     },
     {
         "group": "g_value", "keywords": ["估值合理", "便宜", "低估", "估值便宜", "价格便宜"],
@@ -50,6 +83,8 @@ PRESETS = [
         "conditions": [
             {"metric": "pe_pct", "op": "<=", "tiers": [0.7, 0.5, 0.3], "unit_tier": None},
         ],
+        "negation": "ask",
+        "neg_say": "「不便宜/偏贵」可能指估值分位高，但主动筛选高估值股票或把便宜股排除都很反直觉，这条我不敢替你决定——请在卡片上明确：是要剔除低估值的，还是想要高估值的？",
     },
     {
         "group": "g_stable", "keywords": ["走势相对稳定", "走势稳定", "稳定", "波动小", "走势平稳", "抗跌"],
@@ -58,6 +93,14 @@ PRESETS = [
             {"metric": "vol_pct", "op": "<=", "tiers": [0.6, 0.4, 0.25], "unit_tier": None},
             {"metric": "mdd120", "op": "<=", "tiers": [20, 15, 10], "unit_tier": None},
         ],
+        "negation": "flip",
+        # 不稳定 = 高波动 + 大回撤（专家中档阈值取正向宽松档的镜像）
+        "neg_conditions": [
+            {"metric": "vol_pct", "op": ">=", "tiers": [0.4, 0.6, 0.75], "unit_tier": None},
+            {"metric": "mdd120", "op": ">=", "tiers": [15, 20, 30], "unit_tier": None},
+        ],
+        "neg_say_include": "「不稳定」我按反义口径处理：近 60 日波动率处于池内较高分位（≥60%），且近 120 日最大回撤超过 20%——即高波动、深回撤的股票。",
+        "neg_say_exclude": "「不要不稳定」我翻译成一条排除红线：剔除高波动（池内分位 ≥60%）或最大回撤超过 20% 的股票。",
     },
     {
         "group": "g_active", "keywords": ["活跃", "成交活跃", "流动性好", "成交额大"],
@@ -65,8 +108,21 @@ PRESETS = [
         "conditions": [
             {"metric": "turn20", "op": ">=", "tiers": [2e8, 5e8, 1e9], "unit_tier": "money"},
         ],
+        "negation": "ask",
+        "neg_say": "「不活跃/成交额小」我没有自动翻译——主动选低流动性股票风险较高，请确认你是想剔除低成交额的股票，还是另有含义。",
     },
 ]
+
+NEG_PREFIXES = ("不", "没", "未", "别", "难以", "很难")
+
+
+def _negated(part, kw):
+    """关键词前 2 个汉字窗口内是否有否定词。"""
+    i = part.find(kw)
+    if i < 0:
+        return False
+    window = part[max(0, i - 2):i]
+    return any(n in window for n in NEG_PREFIXES)
 
 EXCLUDE_PRESETS = [
     {"group": "x_st", "keywords": ["st", "ST", "戴帽", "风险警示"],
@@ -79,8 +135,25 @@ EXCLUDE_PRESETS = [
 
 # 合规：预测/荐股类意图
 FORBIDDEN = ["涨停", "明天涨", "下周涨", "必涨", "买入", "卖出", "推荐", "黑马", "牛股", "翻倍"]
-# 行业等暂不支持的集合表达（演示"未理解"一等公民）
-UNSUPPORTED_HINTS = ["行业", "板块", "概念", "新能源", "银行", "医药", "龙头", "股性"]
+# 真正无无争议量化口径的表达（行业/概念已由指数成分真实支持，不再挂起）
+UNSUPPORTED_HINTS = ["龙头", "股性"]
+
+SET_META = {"industry": ("所属行业", "按同花顺行业指数成分判定，取命中行业的并集"),
+            "concept": ("所属概念", "按同花顺概念指数成分判定，取命中概念的并集")}
+SET_WORDS = ("行业", "板块", "概念")
+
+
+def _set_condition(part, kind, names, polarity):
+    label, caliber = SET_META[kind]
+    cid = f"g_set_{kind}_{zlib.crc32('|'.join(names).encode()) & 0xffffff:06x}"
+    return {
+        "condition_id": cid, "quote": part, "intent_group": f"g_set_{kind}",
+        "metric": kind, "metric_label": label, "op": "in", "value": names,
+        "tiers": None, "unit_tier": None, "unit": "",
+        "polarity": polarity, "risk_level": "soft", "on_unknown": "ignore",
+        "caliber": caliber, "rationale": "行业/概念归属来自同花顺指数成分，是集合条件而非数值打分",
+        "source": "expert_default",
+    }
 
 
 def _condition(preset, cond, quote, polarity, risk="soft", on_unknown="quarantine", value=None):
@@ -146,11 +219,30 @@ def parse(text):
         # 不默默产出正向条件，挂起让用户澄清
         hit = False
         for preset in PRESETS:
-            if any(k in part for k in preset["keywords"]):
+            hit_kw = next((k for k in preset["keywords"] if k in part), None)
+            if hit_kw:
+                negated = _negated(part, hit_kw)
+                if negated:
+                    # 否定修饰：能翻转的翻转，不能的挂起
+                    if preset.get("negation") == "flip":
+                        polarity = "exclude" if (is_exclude or global_exclude_word) else "include"
+                        # 反向条件独立 id（可与正向条件共存：要稳定+剔除高波动并不矛盾）
+                        neg_preset = {**preset, "group": preset["group"] + "_neg"}
+                        bucket = excluded if polarity == "exclude" else include
+                        for cond in preset["neg_conditions"]:
+                            bucket.append(_condition(neg_preset, cond, part, polarity))
+                        narrative.append(preset["neg_say_exclude"] if polarity == "exclude"
+                                         else preset["neg_say_include"])
+                        used.add(preset["group"] + "_neg")
+                    else:
+                        unsupported.append({"quote": part, "reason": "否定/反义表达，需要你确认意图"})
+                        narrative.append(preset.get("neg_say", f"「{part}」含反义表述，我先挂起，请在卡片上确认。"))
+                    hit = True
+                    break
                 if is_exclude:
                     unsupported.append({"quote": part,
                                         "reason": "这句话里既有正向要求又有排除词，我不确定你的真实意图"})
-                    narrative.append(f"「{part}」听起来有点矛盾——你是想要低估值的，还是不要低估值的？这条我先挂起，请在卡片上明确。")
+                    narrative.append(f"「{part}」听起来有点矛盾——你是想要{hit_kw}的，还是不要{hit_kw}的？这条我先挂起，请在卡片上明确。")
                     hit = True
                     break
                 if preset["group"] not in used:
@@ -161,10 +253,28 @@ def parse(text):
                 hit = True
                 break
         if not hit:
-            if any(h in part for h in UNSUPPORTED_HINTS):
+            sector_hits = _match_sector(part)
+            if sector_hits:
+                for kind, names, ambiguous in sector_hits:
+                    cid_seen = any(c["condition_id"].startswith(f"g_set_{kind}_") for c in include + excluded)
+                    if ambiguous:
+                        unsupported.append({"quote": part,
+                                            "reason": f"匹配到过多{ '行业' if kind=='industry' else '概念'}，请用更具体的名称"})
+                        continue
+                    if cid_seen:
+                        continue
+                    polarity = "exclude" if (is_exclude or global_exclude_word) else "include"
+                    (excluded if polarity == "exclude" else include).append(
+                        _set_condition(part, kind, names, polarity))
+                    scope = "、".join(names[:4]) + ("等" if len(names) > 4 else "")
+                    if polarity == "exclude":
+                        narrative.append(f"识别为{'行业' if kind=='industry' else '概念'}排除：剔除属于「{scope}」的公司。")
+                    else:
+                        narrative.append(f"「{part}」我识别为{'行业' if kind=='industry' else '概念'}条件：只看属于「{scope}」的公司。")
+            elif any(h in part for h in UNSUPPORTED_HINTS):
                 unsupported.append({"quote": part,
-                                    "reason": "行业/概念/题材或「龙头」这类说法暂时没有无争议的量化口径"})
-            elif len(part) >= 2:
+                                    "reason": "「龙头」「股性」这类说法暂时没有无争议的量化口径"})
+            elif len(part) >= 2 and not (len(part) <= 3 and all(w in part for w in SET_WORDS)):
                 unsupported.append({"quote": part, "reason": "我没能把这句话落成数据条件"})
 
     # 全文级补充检测：空格/连词会把"剔除 ST 和上市不满一年的"切碎，按整句兜底扫描
