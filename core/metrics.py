@@ -85,6 +85,10 @@ def build_matrix():
         row["np_yoy"] = _f(cur.get("calculate_parent_holder_net_profit_yoy_growth_ratio"))
         row["rev_yoy"] = _f(cur.get("calculate_operating_income_yoy_growth_ratio"))
         row["roe"] = _f(cur.get("index_weighted_avg_roe"))
+        row["gross_margin"] = _f(cur.get("sale_gross_margin"))
+        row["net_margin"] = _f(cur.get("sale_net_interest_ratio"))
+        row["debt_ratio"] = _f(cur.get("assets_debt_ratio"))
+        row["cash_content"] = _f(cur.get("net_profit_cash_content"))
 
         # K线类指标
         kl = klines.get(code)
@@ -121,7 +125,9 @@ def build_matrix():
         stocks[c]["pe_pct"] = rk
     # 全部数值指标的池内横截面分位（用于跨指标可比的贴合度排序）
     pct_specs = [("vol_ann", "vol_pct"), ("mdd120", "mdd_pct"),
-                 ("np_yoy", "np_pct"), ("rev_yoy", "rev_pct"), ("turn20", "turn_pct")]
+                 ("np_yoy", "np_pct"), ("rev_yoy", "rev_pct"), ("turn20", "turn_pct"),
+                 ("roe", "roe_pct"), ("gross_margin", "gm_pct"),
+                 ("debt_ratio", "debt_pct"), ("cash_content", "cc_pct")]
     for metric, key in pct_specs:
         vals = [stocks[c].get(metric) for c in codes]
         ranks = _pct_rank(vals)
@@ -131,7 +137,8 @@ def build_matrix():
     # 批次质量：关键指标缺失率 + 行业覆盖率，超阈值标 degraded
     n = len(stocks)
     unknown_rates = {}
-    for metric in ("np_yoy", "rev_yoy", "pe_pct", "vol_pct", "mdd_pct", "turn_pct"):
+    for metric in ("np_yoy", "rev_yoy", "pe_pct", "vol_pct", "mdd_pct", "turn_pct",
+                   "roe", "gross_margin", "debt_ratio", "cash_content"):
         miss = sum(1 for s in stocks.values() if s.get(metric) is None)
         unknown_rates[metric] = round(miss / n, 3) if n else 1.0
     industry_cov = round(sum(1 for s in stocks.values() if s.get("industry")) / n, 3) if n else 0

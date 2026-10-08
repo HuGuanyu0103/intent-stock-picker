@@ -55,6 +55,18 @@ REGISTRY = {
     "turn20": {"label": "近20日日均成交额", "unit": "元", "kind": "numeric",
                "caliber": "近 20 个交易日成交额均值",
                "rationale": "流动性红线：日均成交额过低意味着冲击成本高、想卖卖不掉，5 亿是沪深300 的经验安全线"},
+    "roe": {"label": "净资产收益率ROE", "unit": "%", "kind": "numeric",
+            "caliber": "2026 中报加权 ROE（年化口径以上市公司披露为准）",
+            "rationale": "ROE 是衡量股东资本回报最综合的盈利指标，长期 ≥15% 通常代表有持续竞争优势"},
+    "gross_margin": {"label": "销售毛利率", "unit": "%", "kind": "numeric",
+                     "caliber": "2026 中报销售毛利率",
+                     "rationale": "毛利率反映产品/服务的定价权，行业差异大，阈值仅作粗筛，跨行业比较需谨慎"},
+    "debt_ratio": {"label": "资产负债率", "unit": "%", "kind": "numeric",
+                   "caliber": "2026 中报资产负债率（总负债/总资产）",
+                   "rationale": "财务杠杆的红线，非金融企业长期超过 70% 偿债压力显著；银行等金融行业天然高负债，应结合行业看"},
+    "cash_content": {"label": "净利润现金含量", "unit": "%", "kind": "numeric",
+                     "caliber": "2026 中报经营现金流净额/净利润×100%",
+                     "rationale": "检验利润含金量：长期 <80% 说明账面利润没变成现金，可能是应收款或会计调节"},
     "is_st": {"label": "ST/*ST 风险警示", "unit": "", "kind": "boolean",
               "caliber": "证券名称含 ST 或 *ST",
               "rationale": "风险警示股存在退市与连续跌停流动性风险，是绝大多数投资者的默认红线"},
@@ -88,6 +100,8 @@ PRESETS = [
     },
     {
         "group": "g_stable", "keywords": ["走势相对稳定", "走势稳定", "稳定", "波动小", "走势平稳", "抗跌"],
+        # 显式反义短语（"不平稳"不是"平稳"的连续子串，窗口检测抓不到，单独列）
+        "neg_keywords": ["不稳定", "不平稳", "波动大", "大幅波动", "起伏大", "跌得多"],
         "say": "「走势稳定」我拆成两条：近 60 日波动率处于池内较低分位，且近 120 日最大回撤不超过 15%。",
         "conditions": [
             {"metric": "vol_pct", "op": "<=", "tiers": [0.6, 0.4, 0.25], "unit_tier": None},
@@ -111,6 +125,42 @@ PRESETS = [
         "negation": "ask",
         "neg_say": "「不活跃/成交额小」我没有自动翻译——主动选低流动性股票风险较高，请确认你是想剔除低成交额的股票，还是另有含义。",
     },
+    {
+        "group": "g_profit", "keywords": ["高ROE", "ROE高", "净资产收益率高", "盈利能力强", "赚钱能力强", "回报高", "白马"],
+        "say": "「盈利能力强/白马」我用 ROE 衡量，默认要求最新中报加权 ROE ≥10%（宽松 8%/严格 15%）。",
+        "conditions": [
+            {"metric": "roe", "op": ">=", "tiers": [8, 10, 15], "unit_tier": None},
+        ],
+        "negation": "ask",
+        "neg_say": "「ROE 低/不赚钱」我没有自动反向筛选——主动选低盈利公司通常是困境反转等特殊策略，请在卡片上确认。",
+    },
+    {
+        "group": "g_safe", "keywords": ["负债低", "低负债", "财务稳健", "财务安全", "杠杆低", "偿债能力强"],
+        "say": "「财务稳健」我用资产负债率衡量，默认要求 ≤60%（宽松 70%/严格 40%）；注意银行等金融行业天然高负债。",
+        "conditions": [
+            {"metric": "debt_ratio", "op": "<=", "tiers": [70, 60, 40], "unit_tier": None},
+        ],
+        "negation": "ask",
+        "neg_say": "「负债高/杠杆高」反直觉，我没有自动筛选，请确认意图。",
+    },
+    {
+        "group": "g_cash", "keywords": ["现金流好", "现金多", "盈利质量高", "利润含金量高", "真金白银"],
+        "say": "「现金流好/盈利质量高」我用净利润现金含量（经营现金流/净利润）衡量，默认 ≥100% 意味着利润全部变成了现金。",
+        "conditions": [
+            {"metric": "cash_content", "op": ">=", "tiers": [80, 100, 120], "unit_tier": None},
+        ],
+        "negation": "ask",
+        "neg_say": "「现金流差」我没有自动反向筛选，请确认是否要剔除现金流为负的公司。",
+    },
+    {
+        "group": "g_margin", "keywords": ["毛利率高", "高毛利", "利润率高"],
+        "say": "「高毛利」我用销售毛利率衡量，默认 ≥30%；毛利率行业差异很大，跨行业比较请谨慎。",
+        "conditions": [
+            {"metric": "gross_margin", "op": ">=", "tiers": [20, 30, 50], "unit_tier": None},
+        ],
+        "negation": "ask",
+        "neg_say": "「毛利低」我没有自动处理，请确认意图。",
+    },
 ]
 
 NEG_PREFIXES = ("不", "没", "未", "别", "难以", "很难")
@@ -133,8 +183,9 @@ EXCLUDE_PRESETS = [
      "metric": "is_new", "op": "==", "value": True, "risk": "hard", "on_unknown": "quarantine"},
 ]
 
-# 合规：预测/荐股类意图
-FORBIDDEN = ["涨停", "明天涨", "下周涨", "必涨", "买入", "卖出", "推荐", "黑马", "牛股", "翻倍"]
+# 合规：预测/荐股类意图（先于分词匹配，整句包含即拦截）
+FORBIDDEN = ["涨停", "明天涨", "下周涨", "必涨", "能涨", "会涨", "买入", "卖出", "买点", "卖点",
+             "推荐", "黑马", "牛股", "翻倍", "买什么股票"]
 # 真正无无争议量化口径的表达（行业/概念已由指数成分真实支持，不再挂起）
 UNSUPPORTED_HINTS = ["龙头", "股性"]
 
@@ -190,12 +241,28 @@ def parse(text):
                 "conditions": [], "unsupported": [], "warnings": []}
 
     # 切分意图短语（顿号/逗号/中文分句/空格）
-    raw_parts = [p.strip() for p in re.split(r"[，,、。；;\s]+", text) if p.strip()]
+    # 显式反义短语先于普通关键词处理（"波动大/不平稳"直接翻转为反向条件）
     global_exclude_word = any(k in text for k in ["剔除", "排除", "不要", "避开", "不看", "去掉", "不带"])
+    used = set()
+    neg_flip_hits = {}  # group → 触发词
+    for _preset in PRESETS:
+        for nkw in _preset.get("neg_keywords", []):
+            if nkw in text and _preset["group"] not in neg_flip_hits:
+                neg_flip_hits[_preset["group"]] = nkw
+    for grp, nkw in neg_flip_hits.items():
+        _preset = next(p for p in PRESETS if p["group"] == grp)
+        polarity = "exclude" if global_exclude_word else "include"
+        neg_preset = {**_preset, "group": grp + "_neg"}
+        bucket = excluded if polarity == "exclude" else include
+        for cond in _preset["neg_conditions"]:
+            bucket.append(_condition(neg_preset, cond, nkw, polarity))
+        narrative.append(_preset["neg_say_exclude"] if polarity == "exclude" else _preset["neg_say_include"])
+        used.add(grp + "_neg")
+
+    raw_parts = [p.strip() for p in re.split(r"[，,、。；;\s]+", text) if p.strip()]
     # 纯连接词/排除动词/语气碎片，不参与"未理解"挂起
     STOP_PARTS = {"剔除", "排除", "不要", "避开", "去掉", "不看", "和", "与", "的", "了", "都", "还有", "以及"}
     parts = [p for p in raw_parts if p not in STOP_PARTS]
-    used = set()
 
     for part in parts:
         low = part
@@ -215,43 +282,43 @@ def parse(text):
                 hit_ex = True
         if hit_ex:
             continue
-        # 正向类：同一分句既含正向短语又含排除词（如"低估值的不要"）视为口误，
-        # 不默默产出正向条件，挂起让用户澄清
+        # 正向类：一个分句可能含多个意图（"业绩增长的低估值股票"无标点时同句含两类条件），
+        # 因此遍历全部 PRESETS 不 break；否定/口误按各自命中词独立判断
         hit = False
         for preset in PRESETS:
             hit_kw = next((k for k in preset["keywords"] if k in part), None)
-            if hit_kw:
-                negated = _negated(part, hit_kw)
-                if negated:
-                    # 否定修饰：能翻转的翻转，不能的挂起
-                    if preset.get("negation") == "flip":
-                        polarity = "exclude" if (is_exclude or global_exclude_word) else "include"
-                        # 反向条件独立 id（可与正向条件共存：要稳定+剔除高波动并不矛盾）
-                        neg_preset = {**preset, "group": preset["group"] + "_neg"}
-                        bucket = excluded if polarity == "exclude" else include
-                        for cond in preset["neg_conditions"]:
-                            bucket.append(_condition(neg_preset, cond, part, polarity))
-                        narrative.append(preset["neg_say_exclude"] if polarity == "exclude"
-                                         else preset["neg_say_include"])
-                        used.add(preset["group"] + "_neg")
-                    else:
-                        unsupported.append({"quote": part, "reason": "否定/反义表达，需要你确认意图"})
-                        narrative.append(preset.get("neg_say", f"「{part}」含反义表述，我先挂起，请在卡片上确认。"))
+            if not hit_kw:
+                continue
+            negated = _negated(part, hit_kw)
+            if negated:
+                # 否定翻转用独立 neg group，不受正向 group 已使用影响（同句可正反共存）
+                if preset["group"] + "_neg" in used:
                     hit = True
-                    break
-                if is_exclude:
-                    unsupported.append({"quote": part,
-                                        "reason": "这句话里既有正向要求又有排除词，我不确定你的真实意图"})
-                    narrative.append(f"「{part}」听起来有点矛盾——你是想要{hit_kw}的，还是不要{hit_kw}的？这条我先挂起，请在卡片上明确。")
-                    hit = True
-                    break
-                if preset["group"] not in used:
-                    for cond in preset["conditions"]:
-                        include.append(_condition(preset, cond, part, "include"))
-                    narrative.append(preset["say"])
-                    used.add(preset["group"])
+                    continue
+                if preset.get("negation") == "flip":
+                    polarity = "exclude" if (is_exclude or global_exclude_word) else "include"
+                    neg_preset = {**preset, "group": preset["group"] + "_neg"}
+                    bucket = excluded if polarity == "exclude" else include
+                    for cond in preset["neg_conditions"]:
+                        bucket.append(_condition(neg_preset, cond, part, polarity))
+                    narrative.append(preset["neg_say_exclude"] if polarity == "exclude"
+                                     else preset["neg_say_include"])
+                    used.add(preset["group"] + "_neg")
+                else:
+                    unsupported.append({"quote": hit_kw, "reason": "否定/反义表达，需要你确认意图"})
+                    narrative.append(preset.get("neg_say", f"「{hit_kw}」的反义表述我先挂起，请在卡片上确认。"))
                 hit = True
-                break
+            elif is_exclude:
+                unsupported.append({"quote": hit_kw,
+                                    "reason": "这句话里既有正向要求又有排除词，我不确定你的真实意图"})
+                narrative.append(f"「{part}」听起来有点矛盾——你是想要{hit_kw}的，还是不要{hit_kw}的？这条我先挂起。")
+                hit = True
+            elif preset["group"] not in used:
+                for cond in preset["conditions"]:
+                    include.append(_condition(preset, cond, part, "include"))
+                narrative.append(preset["say"])
+                used.add(preset["group"])
+                hit = True
         if not hit:
             sector_hits = _match_sector(part)
             if sector_hits:
@@ -299,13 +366,55 @@ def parse(text):
         for u in unsupported:
             narrative.append(f"关于「{u['quote']}」——{u['reason']}，这一条我先挂起，你可以在卡片上手动指定指标或删除。")
 
-    # 去重保序
+    # 行业通称补扫："XX行业/XX板块/XX概念"里 XX 不是真实指数名时（如"医药"只对应
+    # 医药商业等细分指数），作为碎片挂起交给 LLM 语义展开，而不是静默丢失
+    has_set_cond = any(c["metric"] in ("industry", "concept") for c in include + excluded)
+    if not has_set_cond:
+        for part in parts:
+            m = re.search(r"([一-龥]{2,5})(?:行业|板块|概念)", part)
+            if m:
+                word = m.group(1)
+                all_names = _sector_tables()["industry"] + _sector_tables()["concept"]
+                # word 本身不是精确指数名（而是若干细分指数名的子串，如"医药"→医药商业/医药流通），
+                # 或完全无匹配 → 都是通称，需 LLM 展开为具体指数
+                if word not in all_names:
+                    unsupported.append({"quote": word + "行业",
+                                        "reason": "行业通称，需要展开为具体行业指数"})
+
+    # LLM 兜底：对规则未覆盖的碎片做接地（无 Key/失败自动降级为纯规则）
+    llm_used = False
+    if unsupported:
+        try:
+            from . import llm_grounder
+            if llm_grounder.is_configured():
+                llm_res = llm_grounder.ground([u["quote"] for u in unsupported], text)
+                if llm_res:
+                    llm_used = True
+                    still_unsupported = []
+                    resolved_quotes = {c["quote"] for c in llm_res["conditions"]}
+                    for u in unsupported:
+                        # LLM 已成功落地的碎片不再挂起；其余保留（含被门禁拦截的）
+                        if u["quote"] not in resolved_quotes:
+                            still_unsupported.append(u)
+                    unsupported = still_unsupported
+                    bucket = excluded if False else include
+                    for c in llm_res["conditions"]:
+                        (excluded if c["polarity"] == "exclude" else include).append(c)
+                    narrative.extend(llm_res.get("narrative", []))
+                    for u in llm_res.get("unsupported", []):
+                        if u not in unsupported:
+                            unsupported.append(u)
+        except Exception:
+            pass  # LLM 任何异常都不影响规则主链路
+
+    # 去重保序（LLM 条件与规则条件 metric+polarity 相同时规则优先）
     seen, conds = set(), []
     for c in include + excluded:
-        if c["condition_id"] not in seen:
-            seen.add(c["condition_id"])
+        dedup_key = (c["metric"], c["polarity"]) if c.get("intent_group") == "llm" else c["condition_id"]
+        if dedup_key not in seen:
+            seen.add(dedup_key)
             conds.append(c)
 
     return {"intent_class": "screen" if conds else "unknown",
             "narrative": narrative, "conditions": conds,
-            "unsupported": unsupported, "warnings": warnings}
+            "unsupported": unsupported, "warnings": warnings, "llm_used": llm_used}

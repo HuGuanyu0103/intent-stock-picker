@@ -1,0 +1,32 @@
+{
+  "医药行业里业绩增长的": {
+    "intent_class": "screen",
+    "conditions": [
+      {"quote": "医药行业", "metric": "industry", "op": "in", "value": ["医药商业", "医药流通", "化学制药", "中药", "生物制品"], "polarity": "include", "confidence": 0.72, "reason": "医药是行业通称，展开为医药相关行业指数"}
+    ],
+    "unsupported": []
+  },
+  "拿得住的好公司，别太贵": {
+    "intent_class": "screen",
+    "conditions": [
+      {"quote": "别太贵", "metric": "pe_pct", "op": "<=", "value": 0.5, "polarity": "include", "confidence": 0.8, "reason": "「别太贵」=估值分位低，拿得住隐含稳定但不强行落地"}
+    ],
+    "unsupported": [{"quote": "拿得住", "reason": "持有心态描述，无直接量化口径，建议由用户显式补充稳定条件"}]
+  },
+  "能持续赚钱、负债不多的": {
+    "intent_class": "screen",
+    "conditions": [
+      {"quote": "能持续赚钱", "metric": "roe", "op": ">=", "value": 10, "polarity": "include", "confidence": 0.85, "reason": "持续赚钱→ROE 衡量资本回报"},
+      {"quote": "负债不多", "metric": "debt_ratio", "op": "<=", "value": 60, "polarity": "include", "confidence": 0.88, "reason": "负债不多→资产负债率低于60%"}
+    ],
+    "unsupported": []
+  },
+  "找经营稳健、不容易暴雷的公司": {
+    "intent_class": "screen",
+    "conditions": [
+      {"quote": "不容易暴雷", "metric": "debt_ratio", "op": "<=", "value": 60, "polarity": "include", "confidence": 0.7, "reason": "暴雷风险最直接的量化代理是低杠杆，现金流作为补充由用户决定"},
+      {"quote": "不容易暴雷", "metric": "cash_content", "op": ">=", "value": 80, "polarity": "include", "confidence": 0.66, "reason": "利润有现金支撑降低财务暴雷概率"}
+    ],
+    "unsupported": []
+  }
+}

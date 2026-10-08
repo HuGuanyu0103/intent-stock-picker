@@ -6,7 +6,7 @@ import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from core import metrics, parser as intent_parser, engine
+from core import metrics, parser as intent_parser, engine, llm_grounder
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -28,6 +28,7 @@ def health():
     return jsonify({"as_of": MATRIX["as_of"], "n": MATRIX["n"],
                     "mode": "sample" if not os.environ.get("FUYAO_API_KEY") else "live",
                     "engine": "确定性三值判定，LLM 不参与选股结果",
+                    "grounding": llm_grounder.mode_label(),
                     "health": MATRIX.get("health", {})})
 
 
