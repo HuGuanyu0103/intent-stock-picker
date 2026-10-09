@@ -6,7 +6,7 @@
 > |---|---|---|
 > | ▶️ **在线产品（首选，点开即用）** | **https://flux-ai-preview-91229445012098262-4mb7k6kikh5h4wwb.flux.bytedance.net/** | 无需登录，沪深300 真实数据 |
 > | 📦 **完整提交包 ZIP（4MB）** | [下载（含演示视频+源码+全部文档）](https://github.com/HuGuanyu0103/intent-stock-picker/releases/download/v1.0-hackathon-submit/intent-stock-picker_submission.zip) | Release 附件，解压即用 |
-> | 🎬 **62 秒演示视频** | [在线观看 / 下载](https://github.com/HuGuanyu0103/intent-stock-picker/releases/tag/v1.0-hackathon-submit) | Release 页内 mp4 附件 |
+> | 🎬 **74 秒演示视频** | [在线观看 / 下载](https://github.com/HuGuanyu0103/intent-stock-picker/releases/tag/v1.0-hackathon-submit) | Release 页内 mp4 附件 |
 >
 > **3 分钟体验路径**：打开产品 → 点"示例：标准三连"看 AI 流式解读 → 条件卡上看口径/专家值理由/全池试算 → 运行后展开入选股看逐条件证据 → 切"差一点/数据不足" → 改阈值重跑看结果 diff → 输入"推荐涨停股"看合规拦截。
 >
@@ -102,7 +102,7 @@ LLM_MOCK_FILE=tests/fixtures/llm_mock_responses.json python3 tests/run_eval.py  
 - **贴合度排序**：所有数值条件统一换算成池内横截面分位差（跨指标可比），按"最短板"排序，公式随口径悬停可见。
 - **硬冲突拦截**：同指标阈值区间无交集时阻止运行。
 - **口误识别**："低估值的不要"这类同句矛盾不默默执行，挂起待澄清。
-- **批次健康**：每次预热产出关键指标缺失率与行业覆盖率，任一超 15% 界面状态条红色告警，防止把数据故障误读成筛选结果。
+- **批次健康**：每次预热产出关键指标缺失率与行业覆盖率。区分两类缺失——全行业适用指标（同比/波动/ROE 等）缺失率 >15% 告警；口径性缺失（亏损股无 PE、银行/保险/券商不披露毛利率）设基线 +10pct 余量，仅异常飙升才告警，防止把正常业务现象误报成数据源故障。
 - **二次筛选**：结果页追加自然语言条件，合并同一条件模型重跑，结果集 diff 高亮新入/掉出。
 - **专家值理由**：每张卡附"为什么这么定"的一句话口径说明，可调档/手改，来源标记区分专家值与用户调整。
 - **方案保存**：条件组合可命名保存在浏览器本地（localStorage），随时加载复跑，无账号体系。
@@ -118,7 +118,7 @@ LLM_MOCK_FILE=tests/fixtures/llm_mock_responses.json python3 tests/run_eval.py  
 | 文档 | 内容 |
 |---|---|
 | [交付说明与任务书对照](docs/交付说明与任务书对照.md) | 必交/可选项逐项对照、评审体验路径、运行说明 |
-| [AI 使用与验证记录](docs/AI使用与验证记录.md) | AI 工具、参与环节、14 条人工纠错记录 |
+| [AI 使用与验证记录](docs/AI使用与验证记录.md) | AI 工具、参与环节、25 条人工纠错记录 |
 | [测试说明](docs/测试说明.md) | 主链路/异常/合规测试矩阵 |
 | [评测体系](docs/评测体系.md) | MVP 成立标准、埋点指标、数据→迭代动作映射 |
 | [MVP 产品定义](docs/MVP产品定义.md) | 题眼解读、条件 Schema、四方职责、四分组设计 |
@@ -138,13 +138,13 @@ tests/eval_intent.jsonl  50 条分层评测集（高频/新指标/否定/行业/
 tests/run_eval.py        接地评测跑分（规则 vs 混合对比）
 app.py            API + SSE
 scripts/preheat.py  每日预热
-tests/test_engine.py  离线测试（17 项，python3 tests/test_engine.py）
+tests/test_engine.py  离线测试（28 项，python3 tests/test_engine.py）
 ```
 
 ## 已知边界与未做事项
 
 - 样本池仅沪深 300；10 个数值指标（同比×2/估值分位/波动/回撤/成交额/ROE/毛利率/负债率/现金流）+ 布尔红线 2 个 + 行业/概念集合；条件仅 AND + 单指标谓词，不支持 OR/嵌套/跨期表达式。
-- 在线服务默认纯规则（本仓库提交时未配置 LLM key）；混合接地的代码、门禁与评测完整可复现，配置 `LLM_API_KEY` 即启用。
+- 在线预览服务已配置 LLM（长尾表达走混合接地，条件卡显示「🤖 AI理解」）；本地未配置 `LLM_API_KEY` 时自动降级为纯规则，混合接地的代码、门禁与评测完整可复现。
 - 扶摇估值接口**只提供最新快照**，故自身历史分位未做；当前为池内横截面分位。
 - 扶摇代码表 `list_date` 实测返回为空，"新股"改用日 K 根数近似（400 自然日窗口内 <130 根 ≈ 上市 6 个月内）；沪深300 成分实际命中为 0。
 - 无股本字段，未提供市值/换手率。

@@ -126,7 +126,7 @@ def run(matrix, conditions):
             # 内部判定：include pass=合格；exclude pass=触发排除。
             # 投影给用户时，排除条件翻转为正向安全语义（"必须不是 ST"）：
             # pass↔fail、==→≠，unknown 不变；分组仍按内部 r 判定。
-            show_r, show_op = r, c["op"]
+            show_r, show_op, show_thr = r, c["op"], _threshold_text(c)
             if c["polarity"] == "exclude":
                 if r == "pass":
                     show_r = "fail"
@@ -136,10 +136,13 @@ def run(matrix, conditions):
                            "<": "≥", "<=": ">", "in": "不属于"}.get(c["op"], c["op"])
                 if c["metric"] in _SET_METRICS:
                     show_op = "不属于"  # 红线要求语句固定为「不属于 X」
+                elif REG_KIND.get(c["metric"]) == "boolean":
+                    # 布尔红线投影为「该标志必须为否」，比「≠ 是」更贴近自然语言
+                    show_op, show_thr = "必须为", "否"
             checks.append({"condition_id": c["condition_id"], "metric_label": c["metric_label"],
                            "polarity": c["polarity"], "result": show_r, "op": show_op,
                            "actual": _fmt(c, v), "actual_raw": v,
-                           "threshold": _threshold_text(c), "unit": c["unit"]})
+                           "threshold": show_thr, "unit": c["unit"]})
             if c["polarity"] == "include":
                 inc_fail += r == "fail"
                 if r == "unknown":

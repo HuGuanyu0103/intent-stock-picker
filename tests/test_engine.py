@@ -59,7 +59,8 @@ check("C 触发 ST 排除组", any(x["thscode"] == "C" for x in res["groups"]["e
 # 排除条件投影翻转：用户视角"必须不是 ST"
 a_checks = next(x for x in res["groups"]["selected"] if x["thscode"] == "A")["checks"]
 st_show = next(x for x in a_checks if x["metric_label"].startswith("ST"))
-check("入选非ST股的ST行显示为✔满足（非双重否定）", st_show["result"] == "pass" and st_show["op"] == "≠")
+check("入选非ST股的ST行显示为✔满足且要求为「必须为否」",
+      st_show["result"] == "pass" and st_show["op"] == "必须为" and st_show["threshold"] == "否")
 c_rec = next(x for x in res["groups"]["excluded"] if x["thscode"] == "C")
 st_fail = next(x for x in c_rec["checks"] if x["metric_label"].startswith("ST"))
 check("被排除ST股的ST行显示为✘且原因点出红线冲突", st_fail["result"] == "fail" and "红线" in c_rec["reasons"][0])

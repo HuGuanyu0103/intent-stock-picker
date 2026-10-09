@@ -135,6 +135,10 @@ def build_matrix():
             stocks[c][key] = ranks.get(i)
 
     # 批次质量：关键指标缺失率 + 行业覆盖率，超阈值标 degraded
+    # 注意区分两类缺失：
+    #  - 口径性缺失（正常）：亏损公司 PE 无意义、银行/保险/券商不披露毛利率——天然缺一截，不是故障
+    #  - 应有数据缺失（故障信号）：同比/波动/回撤/ROE/负债率等全行业适用，缺失即预热或接口异常
+    # 对口径性指标采用「基线 + 10pct 余量」：只有缺失率异常飙升才告警
     n = len(stocks)
     unknown_rates = {}
     for metric in ("np_yoy", "rev_yoy", "pe_pct", "vol_pct", "mdd_pct", "turn_pct",
@@ -142,7 +146,17 @@ def build_matrix():
         miss = sum(1 for s in stocks.values() if s.get(metric) is None)
         unknown_rates[metric] = round(miss / n, 3) if n else 1.0
     industry_cov = round(sum(1 for s in stocks.values() if s.get("industry")) / n, 3) if n else 0
-    degraded = any(rate > 0.15 for rate in unknown_rates.values()) or industry_cov < 0.9
+    _STRUCTURAL_MISS_BASELINE = {"pe_pct": 0.12, "gross_margin": 0.22}
+    _HARD_MISS = 0.15
+    _SURGE_MARGIN = 0.10
+    degraded_reasons = [
+        f"{metric} 缺失率 {rate:.0%}（超允许上限 {_STRUCTURAL_MISS_BASELINE.get(metric, _HARD_MISS) + _SURGE_MARGIN:.0%}）"
+        for metric, rate in unknown_rates.items()
+        if rate > _STRUCTURAL_MISS_BASELINE.get(metric, _HARD_MISS) + _SURGE_MARGIN
+    ]
+    if industry_cov < 0.9:
+        degraded_reasons.append(f"行业覆盖率仅 {industry_cov:.0%}（要求 ≥90%）")
+    degraded = bool(degraded_reasons)
 
     # 数据时点：快照 timestamp 实测多为 null，改用 K 线最后交易日（真实可靠）
     last_dates = []
@@ -152,7 +166,9 @@ def build_matrix():
     as_of = (datetime.fromtimestamp(max(last_dates) / 1000).strftime("%Y-%m-%d") + " 收盘（盘后预热）"
              if last_dates else "数据时点未知（预热快照）")
     return {"as_of": as_of, "n": n, "stocks": stocks,
-            "health": {"degraded": degraded, "unknown_rates": unknown_rates,
+            "health": {"degraded": degraded, "reasons": degraded_reasons,
+                       "unknown_rates": unknown_rates,
+                       "structural_note": "pe_pct/gross_margin 含口径性缺失（亏损股无 PE、金融行业无毛利率），属正常",
                        "industry_coverage": industry_cov}}
 
 
