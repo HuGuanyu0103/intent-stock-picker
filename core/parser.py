@@ -305,12 +305,14 @@ def parse(text):
                                      else preset["neg_say_include"])
                     used.add(preset["group"] + "_neg")
                 else:
-                    unsupported.append({"quote": hit_kw, "reason": "否定/反义表达，需要你确认意图"})
+                    # 反直觉否定（negation=ask）：规则终审，禁止 LLM 兜底复活
+                    unsupported.append({"quote": hit_kw, "reason": "否定/反义表达，需要你确认意图", "final": True})
                     narrative.append(preset.get("neg_say", f"「{hit_kw}」的反义表述我先挂起，请在卡片上确认。"))
                 hit = True
             elif is_exclude:
+                # 同句矛盾/疑似口误：规则终审，禁止 LLM 兜底复活
                 unsupported.append({"quote": hit_kw,
-                                    "reason": "这句话里既有正向要求又有排除词，我不确定你的真实意图"})
+                                    "reason": "这句话里既有正向要求又有排除词，我不确定你的真实意图", "final": True})
                 narrative.append(f"「{part}」听起来有点矛盾——你是想要{hit_kw}的，还是不要{hit_kw}的？这条我先挂起。")
                 hit = True
             elif preset["group"] not in used:
@@ -381,13 +383,15 @@ def parse(text):
                     unsupported.append({"quote": word + "行业",
                                         "reason": "行业通称，需要展开为具体行业指数"})
 
-    # LLM 兜底：对规则未覆盖的碎片做接地（无 Key/失败自动降级为纯规则）
+    # LLM 兜底：只处理规则"没把握"的碎片；标记 final 的（口误/反直觉否定等规则终审）
+    # 不送给 LLM，防止安全判断被下游模型推翻
     llm_used = False
-    if unsupported:
+    open_unsupported = [u for u in unsupported if not u.get("final")]
+    if open_unsupported:
         try:
             from . import llm_grounder
             if llm_grounder.is_configured():
-                llm_res = llm_grounder.ground([u["quote"] for u in unsupported], text)
+                llm_res = llm_grounder.ground([u["quote"] for u in open_unsupported], text)
                 if llm_res:
                     llm_used = True
                     still_unsupported = []
@@ -397,13 +401,15 @@ def parse(text):
                         if u["quote"] not in resolved_quotes:
                             still_unsupported.append(u)
                     unsupported = still_unsupported
-                    bucket = excluded if False else include
                     for c in llm_res["conditions"]:
                         (excluded if c["polarity"] == "exclude" else include).append(c)
                     narrative.extend(llm_res.get("narrative", []))
+                    # LLM 对同一碎片的挂起与规则挂起按 quote 去重
+                    have = {u["quote"] for u in unsupported}
                     for u in llm_res.get("unsupported", []):
-                        if u not in unsupported:
+                        if u.get("quote") not in have:
                             unsupported.append(u)
+                            have.add(u["quote"])
         except Exception:
             pass  # LLM 任何异常都不影响规则主链路
 
