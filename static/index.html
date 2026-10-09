@@ -6,13 +6,14 @@
 <title>条件协作台 · 自然语言智能选股与策略解释器</title>
 <style>
 :root{
-  --blue:#2563eb;--blue-bg:#eff4ff;
-  --red:#d92d20;--red-bg:#fef3f2;
+  /* 主色对齐同花顺：红=品牌/主交互，橘=AI/强调；绿仅表示通过/入选 */
+  --brand:#f54436;--brand-d:#d93025;--brand-bg:#fff2f0;
+  --orange:#f5841a;--orange-d:#c2570a;--orange-bg:#fff6ec;
+  --exclude:#b42318;--exclude-bg:#fef3f2;
   --green:#12805c;--green-bg:#ecfdf3;
   --amber:#b54708;--amber-bg:#fffaeb;
-  --violet:#6938ef;--violet-bg:#f4f3ff;
-  --ink:#101828;--sub:#475467;--mut:#98a2b3;
-  --line:#eaecf0;--bg:#f5f6f8;--card:#fff;
+  --ink:#1a1a1a;--sub:#475467;--mut:#98a2b3;
+  --line:#eaecf0;--bg:#f5f5f7;--card:#fff;
   --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.06);
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -20,7 +21,7 @@ body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:
 .wrap{max-width:1080px;margin:0 auto;padding:14px 20px 60px}
 header{padding:6px 0 2px}
 header h1{font-size:18px;font-weight:700;letter-spacing:.2px}
-header h1 .logo{color:var(--blue)}
+header h1 .logo{color:var(--brand)}
 .sub{color:var(--sub);font-size:13px;margin-top:3px}
 /* 顶栏元信息：低调纯文本，不再用边框盒子 */
 .statusbar{margin-top:8px;font-size:12px;color:var(--mut);display:flex;gap:14px;flex-wrap:wrap;align-items:center}
@@ -28,22 +29,22 @@ header h1 .logo{color:var(--blue)}
 .statusbar .dot{width:3px;height:3px;border-radius:50%;background:#d0d5dd;align-self:center}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:12px;box-shadow:var(--shadow)}
 textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:15px;resize:vertical;font-family:inherit;color:var(--ink);background:#fcfcfd;transition:border-color .15s,box-shadow .15s}
-textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12);background:#fff}
+textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(245,68,54,.13);background:#fff}
 .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
 button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 14px;font-size:13.5px;cursor:pointer;color:var(--ink);transition:background .15s,border-color .15s}
 button:hover{background:#f9fafb}
-button.primary{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:600}
-button.primary:hover{background:#1d4ed8}
+button.primary{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:600}
+button.primary:hover{background:var(--brand-d)}
 button:disabled{opacity:.45;cursor:not-allowed}
 button.ghost{border-color:transparent;background:transparent;color:var(--mut);padding:4px 8px;font-size:12.5px}
-button.ghost:hover{color:var(--red);background:var(--red-bg)}
+button.ghost:hover{color:var(--exclude);background:var(--exclude-bg)}
 .chip{font-size:12px;color:var(--sub);background:#f9fafb;border:1px solid var(--line);border-radius:20px;padding:4px 12px;cursor:pointer;transition:all .15s}
-.chip:hover:not(:disabled){border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.chip:hover:not(:disabled){border-color:var(--brand);color:var(--brand);background:var(--brand-bg)}
 .micro{margin-top:10px;font-size:11.5px;color:var(--mut)}
 /* AI 解读：轻气泡，学问财的克制但不聊天化（保留编号与结构化） */
 .narr{font-size:14px;margin-top:14px;display:flex;flex-direction:column;gap:8px}
 .narr p{display:flex;gap:9px;align-items:flex-start;animation:fade .3s}
-.narr p::before{content:"AI";flex:none;width:26px;height:18px;border-radius:5px;background:var(--blue-bg);color:var(--blue);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.narr p::before{content:"AI";flex:none;width:26px;height:18px;border-radius:5px;background:var(--brand-bg);color:var(--brand);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:2px}
 .narr p .bub{background:#f7f8fa;border-radius:2px 10px 10px 10px;padding:7px 12px;color:var(--sub);flex:1}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
 .narr p.unsupported::before{background:var(--amber-bg);color:var(--amber)}
@@ -51,12 +52,12 @@ button.ghost:hover{color:var(--red);background:var(--red-bg)}
 h2.sec{font-size:14.5px;font-weight:700;margin:0 0 4px;display:flex;align-items:center;gap:8px}
 h2.sec .hint{font-weight:400}
 .tag{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:600}
-.tag.inc{background:var(--blue-bg);color:var(--blue)}
-.tag.exc{background:var(--red-bg);color:var(--red)}
+.tag.inc{background:var(--brand-bg);color:var(--brand)}
+.tag.exc{background:var(--exclude-bg);color:var(--exclude)}
 /* 条件卡：核心护城河，左侧色条强分区 */
-.cond{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:10px;padding:11px 14px;margin:10px 0;background:#fff;transition:box-shadow .15s}
+.cond{border:1px solid var(--line);border-left:3px solid var(--brand);border-radius:10px;padding:11px 14px;margin:10px 0;background:#fff;transition:box-shadow .15s}
 .cond:hover{box-shadow:var(--shadow)}
-.cond.exclude{border-left-color:var(--red)}
+.cond.exclude{border-left-color:var(--exclude)}
 .cond.pending{border-left-color:#eaaa08;background:var(--amber-bg)}
 .cond .top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
 .cond .ml{font-weight:600;font-size:14px;line-height:1.5}
@@ -65,29 +66,29 @@ h2.sec .hint{font-weight:400}
 .tiers{display:inline-flex;gap:0;background:#f5f6f8;border-radius:8px;padding:2px}
 .tier{padding:4px 12px;font-size:12px;border-radius:6px;border:none;background:transparent;color:var(--sub)}
 .tier:hover{background:transparent;color:var(--ink)}
-.tier.on{background:#fff;color:var(--blue);font-weight:600;box-shadow:0 1px 2px rgba(16,24,40,.1)}
-.cond.exclude .tier.on{color:var(--red)}
+.tier.on{background:#fff;color:var(--brand);font-weight:600;box-shadow:0 1px 2px rgba(16,24,40,.1)}
+.cond.exclude .tier.on{color:var(--exclude)}
 .manual{width:104px;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit}
-.manual:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 2px rgba(37,99,235,.12)}
+.manual:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 2px rgba(245,68,54,.13)}
 .src{font-size:10.5px;padding:1px 7px;border-radius:20px;font-weight:500;background:#f2f4f7;color:var(--sub)}
 .src.expert{background:#f2f4f7}
-.src.adj{background:var(--blue-bg);color:var(--blue)}
-.src.llm{background:var(--violet-bg);color:var(--violet);font-weight:600}
-.trial{display:inline-block;font-size:11.5px;background:var(--blue-bg);color:var(--blue);border-radius:20px;padding:2px 10px;margin-top:8px;font-weight:500}
-.cond.exclude .trial{background:var(--red-bg);color:var(--red)}
-.rationale{font-size:12px;color:var(--amber);background:var(--amber-bg);border-radius:8px;padding:6px 10px;margin-top:8px;line-height:1.6}
-.warn{background:var(--red-bg);border:1px solid #fecdca;color:var(--red);border-radius:8px;padding:8px 12px;font-size:13px;margin-top:10px}
+.src.adj{background:var(--brand-bg);color:var(--brand)}
+.src.llm{background:var(--orange-bg);color:var(--orange);font-weight:600}
+.trial{display:inline-block;font-size:11.5px;background:var(--brand-bg);color:var(--brand);border-radius:20px;padding:2px 10px;margin-top:8px;font-weight:500}
+.cond.exclude .trial{background:var(--exclude-bg);color:var(--exclude)}
+.rationale{font-size:12px;color:var(--orange-d);background:var(--orange-bg);border-left:2px solid var(--orange);border-radius:0 8px 8px 0;padding:6px 10px;margin-top:8px;line-height:1.6}
+.warn{background:var(--exclude-bg);border:1px solid #fecdca;color:var(--exclude);border-radius:8px;padding:8px 12px;font-size:13px;margin-top:10px}
 .estimate{font-size:13px;color:var(--sub);background:#fcfcfd;border:1px dashed var(--line);border-radius:8px;padding:8px 12px}
 .estimate b{font-size:15px}
 /* 结果数字概览：对标行情页，可点击切换分组 */
 .stats{display:flex;gap:8px;margin-top:12px}
 .stat{flex:1;border:1px solid var(--line);border-radius:10px;padding:9px 6px;text-align:center;cursor:pointer;background:#fff;transition:all .15s;min-width:0}
-.stat:hover{border-color:#c4d3f7}
-.stat.on{border-color:var(--blue);background:var(--blue-bg);box-shadow:0 0 0 1px var(--blue) inset}
+.stat:hover{border-color:#f3b4ae}
+.stat.on{border-color:var(--brand);background:var(--brand-bg);box-shadow:0 0 0 1px var(--brand) inset}
 .stat .v{font-size:21px;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums}
 .stat .l{font-size:11px;color:var(--mut);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stat.c-green .v{color:var(--green)}.stat.c-amber .v{color:var(--amber)}
-.stat.c-red .v{color:var(--red)}.stat.c-gray .v{color:var(--sub)}
+.stat.c-red .v{color:var(--exclude)}.stat.c-gray .v{color:var(--sub)}
 .silent{font-size:11.5px;color:var(--mut);margin-top:8px}
 /* 股票行：对标自选股，名称代码左对齐、数字右对齐 */
 .stock{border-bottom:1px solid var(--line)}
@@ -102,11 +103,11 @@ h2.sec .hint{font-weight:400}
 .stock .chev{color:var(--mut);font-size:11px;transition:transform .2s}
 .stock.open .chev{transform:rotate(180deg)}
 .stock .sumtag{font-size:11.5px;padding:1px 8px;border-radius:20px;font-weight:500}
-.sumtag.red{background:var(--red-bg);color:var(--red)}
+.sumtag.red{background:var(--exclude-bg);color:var(--exclude)}
 .sumtag.amber{background:var(--amber-bg);color:var(--amber)}
 .stock .body{padding:0 6px 12px;display:none;font-size:12.5px}
 .stock.open .body{display:block}
-.gap{color:var(--red);font-size:12.5px;margin:2px 0 8px}
+.gap{color:var(--exclude);font-size:12.5px;margin:2px 0 8px}
 .gap.unknown{color:var(--amber)}
 /* 证据表：去框线，细分割，对齐自选股的数据表气质 */
 .body{overflow-x:auto}
@@ -116,7 +117,7 @@ table.ev td{padding:8px 10px;font-size:12.5px;border-bottom:1px solid #f2f4f7;fo
 table.ev tr:last-child td{border-bottom:none}
 .res{font-weight:600;font-size:11.5px;padding:1px 8px;border-radius:20px;white-space:nowrap}
 .res.pass{color:var(--green);background:var(--green-bg)}
-.res.fail{color:var(--red);background:var(--red-bg)}
+.res.fail{color:var(--exclude);background:var(--exclude-bg)}
 .res.unknown{color:var(--amber);background:var(--amber-bg)}
 .diff{background:var(--green-bg);border:1px solid #abefc6;color:#067647;border-radius:8px;padding:8px 12px;font-size:13px;margin-top:10px}
 .muted{color:var(--mut);font-size:12.5px}
@@ -126,11 +127,11 @@ table.ev tr:last-child td{border-bottom:none}
 .toast.err{background:#b42318}
 .saved-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .saved-item{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:3px 10px;display:flex;gap:7px;align-items:center;background:#fcfcfd;color:var(--sub)}
-.saved-item b{color:var(--blue);font-weight:600}
+.saved-item b{color:var(--brand);font-weight:600}
 .saved-item span[role]{cursor:pointer}
 .saved-item span[role]:hover{color:var(--ink)}
 .saved-item .del{color:var(--mut)}
-.saved-item .del:hover{color:var(--red)}
+.saved-item .del:hover{color:var(--exclude)}
 .disc{margin-top:20px;font-size:11.5px;color:var(--mut);line-height:1.7;border-top:1px solid var(--line);padding-top:12px}
 @media (max-width:640px){
   .wrap{padding:10px 10px 50px}
@@ -253,7 +254,7 @@ const saveSchemes=a=>{try{localStorage.setItem(LS_KEY,JSON.stringify(a))}catch(e
 function renderSaved(){
   const arr=loadSchemes();
   $('#savedRow').innerHTML=arr.length?'<span class="muted" style="font-size:12px">已保存：</span>'+arr.map((s,i)=>
-    `<span class="saved-item"><b>${s.name}</b>（${s.n}条/${s.hit}只）<span role="button" data-load="${i}">↻ 加载</span><span class="del" role="button" data-del="${i}">✕</span></span>`).join(''):'';
+    `<span class="saved-item"><b>${s.name}</b>（${s.n}条/${s.hit}只）<span role="button" data-load="${i}">重新加载</span><span class="del" role="button" data-del="${i}">删除</span></span>`).join(''):'';
   document.querySelectorAll('[data-load]').forEach(el=>el.onclick=()=>{
     const s=loadSchemes()[+el.dataset.load];
     conditions=JSON.parse(JSON.stringify(s.conditions));lastSelected=new Set();
@@ -282,7 +283,7 @@ renderSaved();
 fetch('/api/health').then(r=>r.json()).then(h=>{health=h;
   const sep='<span class="dot"></span>';
   const warn = h.health && h.health.degraded
-    ? `${sep}<span style="color:var(--red);font-weight:600">⚠️ ${(h.health.reasons||['关键指标缺失率超阈值']).join('；')}，见「不可判定」分组</span>` : '';
+    ? `${sep}<span style="color:var(--exclude);font-weight:600">数据提示：${(h.health.reasons||['关键指标缺失率超阈值']).join('；')}，见「不可判定」分组</span>` : '';
   $('#status').innerHTML=`<span>沪深300 成分 <b>${h.n}</b> 只</span>${sep}<span>数据时点 <b>${h.as_of}</b></span>${sep}<span>${h.mode==='live'?'<b>真实数据</b>（盘后预热缓存）':'<b>样例数据</b>'}</span>${sep}<span>${h.engine}</span>${warn}`;
 });
 
@@ -376,13 +377,13 @@ function condHtml(c){
     ? `<span class="muted">红线要求：该标志必须为 <b style="color:var(--ink)">「否」</b>（即不属于${c.metric_label.replace(/（.*?）/g,'')}）</span>`
     : `<span class="muted">${c.op} <b style="color:var(--ink)">${tval(c)}</b></span>`;
   const srcBadge = c.source==='llm_inferred'
-    ? '<span class="src llm">🤖 AI理解</span>'
+    ? '<span class="src llm">AI 理解</span>'
     : (c.source==='expert_default'?'<span class="src expert">专家预设</span>':'<span class="src adj">已调整</span>');
   return `<div class="cond ${c.polarity==='exclude'?'exclude':''} ${c.needs_confirm?'pending':''}" data-id="${c.condition_id}">
     <div class="top"><span class="ml">${c.metric_label} ${headExpr}</span>
     <span class="act">${srcBadge}<button class="ghost" data-del="${c.condition_id}">删除</button></span></div>
     <div class="caliber">口径：${c.caliber}　|　来自你的话：「${c.quote}」</div>
-    ${c.rationale?`<div class="rationale">💡 专家值为什么这么定：${c.rationale}（产品预设口径，可自行调整，不构成投资建议）</div>`:''}
+    ${c.rationale?`<div class="rationale">专家值为什么这么定：${c.rationale}（产品预设口径，可自行调整，不构成投资建议）</div>`:''}
     ${(isNumeric) ? `<div class="row" style="margin:7px 0 0">${c.tiers?`<div class="tiers">${tiers}</div>`:''}
     <input class="manual" type="number" step="any" value="${c.unit_tier==='money'?(c.value/1e8):c.value}" data-manual="${c.condition_id}">
     <span class="muted">${c.unit_tier==='money'?'亿元':c.unit||''}</span></div>` : ''}
@@ -414,7 +415,7 @@ async function refreshTrials(){
     e.textContent=t.polarity==='exclude'?`将剔除 ${t.pass} 只${t.unknown?` · ${t.unknown} 只无法核实`:''}`:`${t.pass}/${t.total} 只满足${t.unknown?` · ${t.unknown} 只无数据`:''}`;
   });
   const cf=$('#conflict');
-  if(r.conflicts.length){cf.innerHTML=r.conflicts.map(x=>`<div class="warn">⚠️ 硬冲突：条件 ${x.ids.join('、')} 对「${x.metric}」的阈值区间无交集，请修改后再运行。</div>`).join('');$('#run').disabled=true;}
+  if(r.conflicts.length){cf.innerHTML=r.conflicts.map(x=>`<div class="warn">硬冲突：条件 ${x.ids.join('、')} 对「${x.metric}」的阈值区间无交集，请修改后再运行。</div>`).join('');$('#run').disabled=true;}
   else{cf.innerHTML='';$('#run').disabled=false;}
   const c=r.real_counts||{};
   $('#estimate').innerHTML = c.selected!=null
@@ -467,7 +468,7 @@ function renderStats(r){
 function checksHtml(checks){
   return '<table class="ev"><tr><th>条件</th><th>类型</th><th>实际值</th><th>要求</th><th>判定</th></tr>'+
     checks.map(x=>`<tr><td>${x.metric_label}</td><td class="muted">${x.polarity==='include'?'正向':'排除'}</td>
-    <td>${x.actual}</td><td class="muted">${x.op} ${x.threshold}</td><td><span class="res ${x.result}">${{pass:'✔ 满足',fail:'✘ 不满足',unknown:'? 无数据'}[x.result]}</span></td></tr>`).join('')+'</table>';
+    <td>${x.actual}</td><td class="muted">${x.op} ${x.threshold}</td><td><span class="res ${x.result}">${{pass:'满足',fail:'不满足',unknown:'无数据'}[x.result]}</span></td></tr>`).join('')+'</table>';
 }
 function stockHtml(rec,r,k){
   let badge='';
