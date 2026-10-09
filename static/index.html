@@ -146,6 +146,19 @@ table.ev tr:last-child td{border-bottom:none}
   .statusbar{gap:7px;font-size:11px}
   textarea{font-size:16px}  /* 防止 iOS 聚焦自动放大 */
   .stock .fit{display:none}
+  /* 窄屏：条件卡操作行纵向堆叠，按钮整行均分，不再与试算文字挤 */
+  #condCard > .row{flex-direction:column;align-items:stretch}
+  #condCard > .row > .row{width:100%;gap:8px}
+  #condCard > .row > .row button{flex:1}
+  #estimate{width:100%}
+  /* 结果卡标题与追加条件框纵向排列 */
+  #resCard > .row{align-items:stretch}
+  #resCard > .row > .row{width:100%}
+  #resCard #refine{flex:1;width:auto}
+  /* 三档档位平分一行，手改输入框换到下一行 */
+  .cond .tiers{width:100%}
+  .cond .tier{flex:1;padding:4px 6px}
+  .cond .manual{width:120px}
 }
 </style>
 </head>
